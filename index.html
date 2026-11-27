@@ -443,13 +443,49 @@ const RES = {
   money:  { sym: '💎', color: '#7fd47a' },
 };
 
+// ---------- kalıcı ilerleme (hurda, açılımlar, mühendisler) ve kayıt ----------
+const UPG = {
+  money:  { name: 'Kumbara',       desc: 'Başlangıç parası +3 💎',          cost: [8, 14, 20] },
+  place:  { name: 'Fazla Tezgâh',  desc: 'Başlangıçta +1 yerleştirme hakkı', cost: [12, 24] },
+  shield: { name: 'Sigorta',       desc: 'Patlama geri sayımı +2 saniye',    cost: [15] },
+  offer:  { name: 'Geniş Vitrin',  desc: 'Dükkanda 4. teklif',               cost: [20] },
+};
+const ENG = {
+  cirak:   { name: 'Çırak',        cost: 0,  color: 0xcf7a3e, desc: 'Özel yeteneği yok. Herkes bir yerden başlar.' },
+  tamirci: { name: 'Usta Tamirci', cost: 15, color: 0x5fd38a, desc: 'Mini oyunlarda Mükemmel alanı %60 daha geniş.' },
+  tuccar:  { name: 'Tüccar',       cost: 15, color: 0xe0b450, desc: 'Dükkanda +1 teklif ve %20 indirim, ama makineler %15 yavaş.' },
+};
+const META = { scrap: 0, lv: { money: 0, place: 0, shield: 0, offer: 0 }, eng: { cirak: true }, pick: 'cirak', runs: 0 };
+try { const m = JSON.parse(localStorage.getItem('tiktik-meta') || 'null'); if (m) { Object.assign(META, m); META.lv = Object.assign({ money: 0, place: 0, shield: 0, offer: 0 }, m.lv); META.eng = Object.assign({ cirak: true }, m.eng); } } catch (e) {}
+function saveMeta() { try { localStorage.setItem('tiktik-meta', JSON.stringify(META)); } catch (e) {} }
+const RUN_KEYS = ['grid', 'rot', 'heat', 'mod', 'round', 'res', 'places', 'offers', 'shopOpen', 'rerolls', 'seenIntro', 'tutorialDone', 'serviceTaught', 'ventTaught', 'eng'];
+function saveRun() {
+  if (state.phase !== 'build' || state.showMeta) return;
+  try { const o = {}; RUN_KEYS.forEach(k => { o[k] = state[k]; }); localStorage.setItem('tiktik-run', JSON.stringify(o)); } catch (e) {}
+}
+function clearRun() { try { localStorage.removeItem('tiktik-run'); } catch (e) {} }
+function loadRun() {
+  try {
+    const o = JSON.parse(localStorage.getItem('tiktik-run') || 'null');
+    if (!o || !Array.isArray(o.grid) || o.grid.length !== COLS * ROWS) return false;
+    RUN_KEYS.forEach(k => { if (o[k] !== undefined) state[k] = o[k]; });
+    state.phase = 'build'; state.needIntro = false; state.res.spark = 0; state.res.energy = 0;
+    state.time = RULES.roundTime; state.buf = new Array(COLS * ROWS).fill(0);
+    state.resumed = true;
+    return true;
+  } catch (e) { return false; }
+}
+// Usta Tamirci: mükemmel alanı çarpanı
+function PW() { return state.eng === 'tamirci' ? 1.6 : 1; }
+
 function newRun() {
   state.grid = new Array(COLS * ROWS).fill(null);
   state.round = 0;
   state.phase = 'build';
-  state.res = { spark: 0, energy: 0, money: RULES.startMoney };
+  state.res = { spark: 0, energy: 0, money: RULES.startMoney + 3 * META.lv.money };
   state.time = RULES.roundTime;
-  state.places = RULES.startPlaces;
+  state.places = RULES.startPlaces + META.lv.place;
+  state.eng = META.pick;
   state.result = null;
   state.pressure = 0;
   state.rot = new Array(COLS * ROWS).fill(null);   // makine yönleri
@@ -462,6 +498,7 @@ function newRun() {
 }
 newRun();
 state.tutorialDone = false;
+loadRun();   // yarım kalan koşu varsa kaldığı turun başından devam
 
 function makeButton(scene, x, y, w, h, label, color, onTap) {
   const k = scene.add.container(x, y);
@@ -491,7 +528,7 @@ class Build extends Phaser.Scene {
   create() {
     const W = this.scale.width, H = this.scale.height;
     this.W = W; this.H = H;
-    this.dialog = null; this.mg = null; this.shop = null; this.pickMod = null; this.lastP = undefined; // sahne yeniden başlarken eski durum kalmasın
+    this.dialog = null; this.mg = null; this.shop = null; this.meta = null; this.pickMod = null; this.lastP = undefined; // sahne yeniden başlarken eski durum kalmasın
 
     const pad = 16 * D;
     this.pad = pad;
@@ -596,7 +633,9 @@ class Build extends Phaser.Scene {
     this.refreshPhase();
     if (state.phase === 'end' || state.phase === 'boom') this.showResult();
     if (state.phase === 'build' && state.shopOpen) this.openShop();
-    if (state.needIntro && state.phase === 'build' && state.round === 0) {
+    if (state.showMeta) this.openMeta();
+    else if (state.resumed) { state.resumed = false; this.flashTip('Kaldığın yerden devam', `Tur ${state.round + 1} başından devam ediyorsun.`, 0x5fd38a, 2500); }
+    else if (state.needIntro && state.phase === 'build' && state.round === 0) {
       // ekran yeniden kurulursa (döndürme) konuşma baştan gösterilir; bitince bir daha çıkmaz
       this.showDialog(state.seenIntro ? STORY.again : STORY.intro, () => { state.needIntro = false; state.seenIntro = true; });
     }
@@ -737,6 +776,7 @@ class Build extends Phaser.Scene {
   }
 
   refreshPhase() {
+    saveRun();
     if (state.phase === 'build') state.pressure = this.computePressure();
     const canVent = state.phase === 'build' && state.heat.some(h => h > 0.01);
     this.ventBtn.setAlpha(canVent ? (state.res.money >= RULES.ventCost ? 1 : 0.5) : 0.25);
@@ -764,9 +804,11 @@ class Build extends Phaser.Scene {
     for (let d = 0; d < 4; d++) { const j = this.nb(i, d); if (j >= 0 && state.grid[j] && state.mod[j] === 'ring') return true; }
     return false;
   }
+  price(key) { return state.eng === 'tuccar' ? Math.ceil(SHOP[key].cost * 0.8) : SHOP[key].cost; }
   rollOffers() {
     const keys = Object.keys(SHOP);
-    state.offers = [0, 1, 2].map(() => ({ key: Phaser.Utils.Array.GetRandom(keys), sold: false }));
+    const n = Math.min(4, 3 + META.lv.offer + (state.eng === 'tuccar' ? 1 : 0));
+    state.offers = Array.from({ length: n }, (_, i) => i).map(() => ({ key: Phaser.Utils.Array.GetRandom(keys), sold: false }));
     // en az bir modül olsun
     if (!state.offers.some(o => SHOP[o.key].mod)) state.offers[0].key = Math.random() < 0.5 ? 'ring' : 'plate';
   }
@@ -799,7 +841,7 @@ class Build extends Phaser.Scene {
     const k = this.add.container(0, 0).setDepth(120);
     const dim = this.add.rectangle(0, 0, W, H, 0x05070d, 0.7).setOrigin(0).setInteractive();
     const cw = W - pad * 2, gap = 10 * D;
-    const cardW = (cw - gap * 2) / 3, cardH = Math.min(cardW * 1.95, H * 0.4);
+    const nc = state.offers.length, cardW = (cw - gap * (nc - 1)) / nc, cardH = Math.min(cardW * 1.95, H * 0.4);
     const top = Math.max(this.topH * 0.5, H * 0.5 - cardH / 2 - 90 * D);
     const g = this.add.graphics();
     const fsT = Math.round(Math.min(W * 0.06, 25 * D)), fs = Math.round(Math.min(W * 0.034, 14 * D));
@@ -821,8 +863,8 @@ class Build extends Phaser.Scene {
       if (o.sold) {
         k.add(this.add.text(x + cardW / 2, cy0 + cardH - bh * 0.8, 'Alındı ✓', { fontFamily: FONT, fontSize: fs + 'px', fontStyle: '700', color: '#7fe3a5' }).setOrigin(0.5));
       } else {
-        const can = state.res.money >= it.cost;
-        const b = makeButton(this, x + cardW / 2, cy0 + cardH - bh * 0.8, cardW - 16 * D, bh, `${it.cost} 💎`, can ? BTN_GO : { base: 0x3a4466, dark: 0x252d47, text: '#8e97b8' }, () => this.buy(n));
+        const can = state.res.money >= this.price(o.key);
+        const b = makeButton(this, x + cardW / 2, cy0 + cardH - bh * 0.8, cardW - 16 * D, bh, `${this.price(o.key)} 💎`, can ? BTN_GO : { base: 0x3a4466, dark: 0x252d47, text: '#8e97b8' }, () => this.buy(n));
         k.add(b);
       }
     });
@@ -852,8 +894,8 @@ class Build extends Phaser.Scene {
   buy(n) {
     const o = state.offers[n], it = SHOP[o.key];
     if (o.sold) return;
-    if (state.res.money < it.cost) { this.cameras.main.shake(80, 0.004); sfx.bad(); return; }
-    state.res.money -= it.cost; o.sold = true;
+    if (state.res.money < this.price(o.key)) { this.cameras.main.shake(80, 0.004); sfx.bad(); return; }
+    state.res.money -= this.price(o.key); o.sold = true;
     [660, 880].forEach((f, k) => setTimeout(() => beep(f, 0.08, 'triangle', 0.15), k * 70)); buzz(20);
     if (o.key === 'place') { state.places += 1; this.openShop(); }
     else if (o.key === 'ice') {
@@ -868,8 +910,10 @@ class Build extends Phaser.Scene {
       this.infoUntil = this.time.now + 1e9;
     }
     this.updateHud(true);
+    saveRun();
   }
   attachMod(i) {
+    this.time.delayedCall(10, saveRun);
     const key = this.pickMod, it = SHOP[key];
     state.mod[i] = key;
     this.pickMod = null; this.infoUntil = 0;
@@ -896,6 +940,97 @@ class Build extends Phaser.Scene {
       g.fillStyle(0x0b0f1c, 0.92).fillCircle(c.x - s * 0.34, c.y - s * 0.34, s * 0.16);
       this.drawShopIcon(g, m, c.x - s * 0.34, c.y - s * 0.34, s * 0.125);
     });
+  }
+
+  // =====================================================================
+  // ATÖLYE: koşular arası kalıcı açılımlar
+  // =====================================================================
+  awardScrap(rounds, won) {
+    const s = rounds * 2 + Math.floor(rounds / RULES.roundsPer) * 5 + (won ? 10 : 0);
+    META.scrap += s; META.runs += 1; saveMeta(); clearRun();
+    return s;
+  }
+  openMeta() {
+    if (this.meta) this.meta.destroy();
+    const W = this.W, H = this.H, pad = this.pad;
+    const k = this.add.container(0, 0).setDepth(125);
+    const dim = this.add.rectangle(0, 0, W, H, 0x05070d, 0.92).setOrigin(0).setInteractive();
+    const g = this.add.graphics();
+    const fsT = Math.round(Math.min(W * 0.065, 27 * D)), fs = Math.round(Math.min(W * 0.036, 15 * D)), fsS = Math.round(fs * 0.85);
+    let y = Math.max(24 * D, H * 0.04);
+    const title = this.add.text(W / 2, y, 'Nuri Usta\'nın Atölyesi', { fontFamily: FONT, fontSize: fsT + 'px', fontStyle: '700', color: '#f0a76a' }).setOrigin(0.5, 0);
+    y += fsT * 1.35;
+    const scrap = this.add.text(W / 2, y, `🔩 ${META.scrap} hurda`, { fontFamily: FONT, fontSize: Math.round(fsT * 0.75) + 'px', fontStyle: '700', color: '#c9d2ee' }).setOrigin(0.5, 0);
+    y += fsT * 1.3;
+    const sub = this.add.text(W / 2, y, 'Hurdayla kalıcı yükseltmeler al. Her koşuda geçerli olur.', { fontFamily: FONT, fontSize: fsS + 'px', fontStyle: '500', color: C.dim, align: 'center', wordWrap: { width: W - pad * 2 } }).setOrigin(0.5, 0);
+    y += sub.height + 16 * D;
+    k.add([dim, g, title, scrap, sub]);
+    // mühendisler
+    const h1 = this.add.text(pad, y, 'Mühendis', { fontFamily: FONT, fontSize: fs + 'px', fontStyle: '700', color: '#ffe3a8' });
+    k.add(h1); y += h1.height + 8 * D;
+    const keys = Object.keys(ENG), gap = 8 * D, cw = (W - pad * 2 - gap * 2) / 3, ch = Math.min(cw * 1.25, H * 0.2);
+    keys.forEach((key, n) => {
+      const e = ENG[key], x = pad + n * (cw + gap), owned = !!META.eng[key], sel = META.pick === key;
+      g.fillStyle(sel ? 0x2c3654 : 0x1b2238, 1).fillRoundedRect(x, y, cw, ch, 14 * D);
+      g.lineStyle(sel ? 3 * D : 1.5 * D, sel ? e.color : 0x2c3654, 1).strokeRoundedRect(x, y, cw, ch, 14 * D);
+      const nm = this.add.text(x + cw / 2, y + 10 * D, e.name, { fontFamily: FONT, fontSize: fs + 'px', fontStyle: '700', color: C.cream, align: 'center', wordWrap: { width: cw - 10 * D } }).setOrigin(0.5, 0);
+      const ds = this.add.text(x + cw / 2, nm.y + nm.height + 4 * D, e.desc, { fontFamily: FONT, fontSize: Math.round(fsS * 0.92) + 'px', fontStyle: '500', color: C.dim, align: 'center', wordWrap: { width: cw - 12 * D } }).setOrigin(0.5, 0);
+      k.add([nm, ds]);
+      const bh = Math.min(32 * D, ch * 0.2), by = y + ch - bh * 0.75;
+      if (sel) k.add(this.add.text(x + cw / 2, by, 'Seçili ✓', { fontFamily: FONT, fontSize: fs + 'px', fontStyle: '700', color: '#7fe3a5' }).setOrigin(0.5));
+      else {
+        const can = owned || META.scrap >= e.cost;
+        k.add(makeButton(this, x + cw / 2, by, cw - 14 * D, bh, owned ? 'Seç' : `${e.cost} 🔩 Aç`, can ? (owned ? BTN_BRASS : BTN_GO) : { base: 0x3a4466, dark: 0x252d47, text: '#8e97b8' }, () => this.metaEng(key)));
+      }
+    });
+    y += ch + 18 * D;
+    // yükseltmeler
+    const h2 = this.add.text(pad, y, 'Yükseltmeler', { fontFamily: FONT, fontSize: fs + 'px', fontStyle: '700', color: '#ffe3a8' });
+    k.add(h2); y += h2.height + 8 * D;
+    const rh = Math.min(58 * D, H * 0.075);
+    Object.keys(UPG).forEach(key => {
+      const u = UPG[key], lv = META.lv[key], max = u.cost.length, full = lv >= max;
+      g.fillStyle(0x1b2238, 1).fillRoundedRect(pad, y, W - pad * 2, rh, 12 * D);
+      const nm = this.add.text(pad + 12 * D, y + rh * 0.3, u.name + '  ' + '●'.repeat(lv) + '○'.repeat(max - lv), { fontFamily: FONT, fontSize: fs + 'px', fontStyle: '700', color: C.cream }).setOrigin(0, 0.5);
+      const ds = this.add.text(pad + 12 * D, y + rh * 0.7, u.desc, { fontFamily: FONT, fontSize: fsS + 'px', fontStyle: '500', color: C.dim }).setOrigin(0, 0.5);
+      k.add([nm, ds]);
+      const bw = Math.min(96 * D, W * 0.24), bx = W - pad - 10 * D - bw / 2;
+      if (full) k.add(this.add.text(bx, y + rh / 2, 'Tam ✓', { fontFamily: FONT, fontSize: fs + 'px', fontStyle: '700', color: '#7fe3a5' }).setOrigin(0.5));
+      else {
+        const c = u.cost[lv], can = META.scrap >= c;
+        k.add(makeButton(this, bx, y + rh / 2, bw, rh * 0.6, `${c} 🔩`, can ? BTN_GO : { base: 0x3a4466, dark: 0x252d47, text: '#8e97b8' }, () => this.metaBuy(key)));
+      }
+      y += rh + 8 * D;
+    });
+    y += 10 * D;
+    const go = makeButton(this, W / 2, Math.min(y + 28 * D, H - 40 * D), Math.min(W * 0.7, 300 * D), Math.min(56 * D, H * 0.07), '▶  Yeni koşu', BTN_GO, () => this.closeMeta());
+    k.add(go);
+    this.meta = k;
+    this.banner.setVisible(false);
+  }
+  metaEng(key) {
+    const e = ENG[key];
+    if (!META.eng[key]) {
+      if (META.scrap < e.cost) { this.cameras.main.shake(80, 0.004); sfx.bad(); return; }
+      META.scrap -= e.cost; META.eng[key] = true;
+      [523, 784].forEach((f, i) => setTimeout(() => beep(f, 0.1, 'triangle', 0.15), i * 80));
+    } else sfx.tap();
+    META.pick = key; saveMeta(); this.openMeta();
+  }
+  metaBuy(key) {
+    const u = UPG[key], lv = META.lv[key];
+    if (lv >= u.cost.length) return;
+    if (META.scrap < u.cost[lv]) { this.cameras.main.shake(80, 0.004); sfx.bad(); return; }
+    META.scrap -= u.cost[lv]; META.lv[key] = lv + 1; saveMeta();
+    [523, 659, 784].forEach((f, i) => setTimeout(() => beep(f, 0.1, 'triangle', 0.15), i * 70)); buzz(20);
+    this.openMeta();
+  }
+  closeMeta() {
+    if (this.meta) { this.meta.destroy(); this.meta = null; }
+    newRun();                 // yükseltmeler yeni koşuya yansısın
+    state.showMeta = false;
+    sfx.pick();
+    this.scene.restart();
   }
 
   // ---------- açıklama kartı ----------
@@ -1006,6 +1141,7 @@ class Build extends Phaser.Scene {
     state.phase = 'end';
     state.result = { won, spark: state.res.spark, goal, bonus, delta, last: state.round === RULES.goals.length - 1 };
     if (state.pressure >= 100) { this.explode(); return; }
+    if (state.result.last) state.result.scrap = this.awardScrap(RULES.goals.length, won);
     this.refreshPhase();
     if (state.result.last) this.showDialog(STORY.win, () => this.showResult());
     else this.showResult();
@@ -1024,6 +1160,7 @@ class Build extends Phaser.Scene {
     this.cells.forEach(v => { if (v) this.setAlert(v, null); });
     this.banner.setVisible(false); this.infoUntil = 0;
     state.result = Object.assign(state.result || {}, { boom: true, round: state.round });
+    state.result.scrap = this.awardScrap(state.round, false);
     this.updateHud(true);
     this.refreshPhase();
     const W = this.W, H = this.H;
@@ -1082,12 +1219,14 @@ class Build extends Phaser.Scene {
       title = 'FABRİKA PATLADI!';
       big = `Tur ${R.round + 1} / ${RULES.goals.length}`;
       sub = R.round === 0 ? 'Bir türün bütün makineleri kızınca basınç %100 olur.\nIsınanları mini oyunla soğut, Fan 2×2 alanı korur.' : `Bölüm ${this.chapter(R.round) + 1}, ${R.round} tur dayandın. Bir dahakine daha uzun!`;
-      label = 'Yeniden kur'; style = BTN_BRASS;
+      sub += `\n+${R.scrap} 🔩 hurda kazandın`;
+      label = 'Atölyeye git'; style = BTN_BRASS;
     } else if (R.last) {
       title = R.won ? 'Fabrika ayakta!' : 'Zor da olsa ayakta!';
       big = `✦ ${R.spark} / ${R.goal}`;
       sub = `${RULES.chapters.length} bölümün ${RULES.goals.length} turunu patlamadan bitirdin.\nSon basınç: %${Math.round(state.pressure)}`;
-      label = 'Yeniden başla'; style = BTN_GO;
+      sub += `\n+${R.scrap} 🔩 hurda kazandın`;
+      label = 'Atölyeye git'; style = BTN_GO;
     } else {
       title = R.won ? 'Hedef tuttu!' : 'Hedef tutmadı';
       big = `✦ ${R.spark} / ${R.goal}`;
@@ -1134,6 +1273,8 @@ class Build extends Phaser.Scene {
       }
     } else {
       newRun();
+      clearRun();
+      state.showMeta = true;
       this.boomed = false;
       this.scene.restart();
     }
@@ -1296,7 +1437,7 @@ class Build extends Phaser.Scene {
   // ISI VE BASINÇ
   // =====================================================================
   chapter(r = state.round) { return Math.min(RULES.chapters.length - 1, Math.floor(r / RULES.roundsPer)); }
-  boomDelay() { return RULES.chapters[this.chapter()].boom; }
+  boomDelay() { return RULES.chapters[this.chapter()].boom + 2 * META.lv.shield; }
   tickJolt(dt) {
     // patron: gevşek vidalar, ara ara bir makine aniden ısınır
     const B = BOSS[state.round];
@@ -1464,6 +1605,7 @@ class Build extends Phaser.Scene {
     if (v.svc === 'broken') return 0;
     let m = 1;
     if (this.hasRingNear(i)) m *= RULES.ringSpeed;
+    if (state.eng === 'tuccar') m *= 0.85;
     if (v.boost && state.time > v.boost.until) m *= v.boost.mult; // süre geri sayıyor: time > until iken aktif
     return m;
   }
@@ -1599,7 +1741,7 @@ class Build extends Phaser.Scene {
     // hedef (geniş koyu yeşil: iyi, dar açık yeşil: mükemmel)
     const z = mg.wa + mg.zoneRel;
     const arc = (half, col) => { g.lineStyle(R * 0.2, col, 1); g.beginPath(); g.arc(x, y, R * 0.9, z - half, z + half, false); g.strokePath(); };
-    arc(0.42, 0x2e8a52); arc(0.16, 0x7fe3a5);
+    arc(0.42, 0x2e8a52); arc(0.16 * PW(), 0x7fe3a5);
     // alttaki nişan işareti
     g.fillStyle(0xffffff, 0.5).fillTriangle(x - 7 * D, y + R + 8 * D, x + 7 * D, y + R + 8 * D, x, y + R + 1 * D);
     // bıçak
@@ -1613,7 +1755,7 @@ class Build extends Phaser.Scene {
       if (mg.kt >= 1) {
         mg.hit = true; mg.knRel = Math.PI / 2 - mg.wa;
         const d = Math.abs(Phaser.Math.Angle.Wrap(Math.PI / 2 - z));
-        const gr = d < 0.16 ? 'perfect' : d < 0.42 ? 'good' : 'bad';
+        const gr = d < 0.16 * PW() ? 'perfect' : d < 0.42 ? 'good' : 'bad';
         beep(gr === 'bad' ? 160 : 520, 0.07, 'square', 0.18); buzz(20);
         this.cameras.main.shake(70, 0.004);
         this.time.delayedCall(220, () => { if (this.mg === mg) this.closeMinigame(gr); });
@@ -1639,14 +1781,14 @@ class Build extends Phaser.Scene {
     g.clear();
     g.fillStyle(0x0b0f1c, 1).fillRoundedRect(mg.bx, y, mg.bw, mg.bh, mg.bh * 0.3);
     g.fillStyle(0x2e8a52, 1).fillRect(mg.bx + mg.bw * (mg.zone - 0.12), y + 4 * D, mg.bw * 0.24, mg.bh - 8 * D);
-    g.fillStyle(0x7fe3a5, 1).fillRect(mg.bx + mg.bw * (mg.zone - 0.045), y + 4 * D, mg.bw * 0.09, mg.bh - 8 * D);
+    g.fillStyle(0x7fe3a5, 1).fillRect(mg.bx + mg.bw * (mg.zone - 0.045 * PW()), y + 4 * D, mg.bw * 0.09 * PW(), mg.bh - 8 * D);
     const nx = mg.bx + mg.bw * mg.pos;
     g.fillStyle(0xffd84a, 1).fillTriangle(nx - 10 * D, y - 14 * D, nx + 10 * D, y - 14 * D, nx, y + 2 * D);
     g.fillStyle(0xffffff, 1).fillRect(nx - 2 * D, y, 4 * D, mg.bh);
   }
   mgDown_press(mg) {
     const d = Math.abs(mg.pos - mg.zone);
-    this.closeMinigame(d < 0.045 ? 'perfect' : d < 0.12 ? 'good' : 'bad');
+    this.closeMinigame(d < 0.045 * PW() ? 'perfect' : d < 0.12 ? 'good' : 'bad');
   }
 
   // --- Basıcı: elmas düşerken kayan kalıbı tam altında durdur (tek dokunuş) ---
@@ -1682,14 +1824,14 @@ class Build extends Phaser.Scene {
     g.fillStyle(mg.locked ? C.copperHi : C.copper, 1).fillRoundedRect(x0, my - r * 0.9, mg.mw, r * 1.8, 8 * D);
     g.fillStyle(0x10162a, 1).fillRoundedRect(mg.mx - mg.mw * 0.3, my - r * 0.6, mg.mw * 0.6, r * 1.1, 5 * D);
     g.fillStyle(0x2e8a52, 1).fillRect(mg.mx - mg.mw * 0.28, my - r * 0.75, mg.mw * 0.56, 4 * D);
-    g.fillStyle(0x7fe3a5, 1).fillRect(mg.mx - mg.mw * 0.09, my - r * 0.75, mg.mw * 0.18, 4 * D);
+    g.fillStyle(0x7fe3a5, 1).fillRect(mg.mx - mg.mw * 0.09 * PW(), my - r * 0.75, mg.mw * 0.18 * PW(), 4 * D);
     // elmas
     if (!mg.landed) {
       this.drawGem(g, mg.fx, gy, r);
       if (mg.t >= mg.T) {
         mg.landed = true;
         const d = mg.locked ? Math.abs(mg.fx - mg.mx) / (mg.mw / 2) : 9;
-        const gr = d < 0.3 ? 'perfect' : d < 0.8 ? 'good' : 'bad';
+        const gr = d < 0.3 * PW() ? 'perfect' : d < 0.8 ? 'good' : 'bad';
         beep(gr === 'bad' ? 150 : 700, 0.08, gr === 'bad' ? 'sawtooth' : 'triangle', 0.18); buzz(20);
         mg.result = gr;
         this.time.delayedCall(220, () => { if (this.mg === mg) this.closeMinigame(gr); });
@@ -1728,7 +1870,7 @@ class Build extends Phaser.Scene {
   }
   mgDown_fan(mg) {
     mg.taps++; mg.spin = 1; beep(500 + mg.taps * 90, 0.05, 'square', 0.12); buzz(8);
-    if (mg.taps >= mg.need) this.closeMinigame(this.grade(mg, 1.1, 1.9));
+    if (mg.taps >= mg.need) this.closeMinigame(this.grade(mg, 1.1 * PW(), 1.9));
   }
 
   flowEnergy(from, to) {
@@ -1841,7 +1983,7 @@ class Build extends Phaser.Scene {
 
   // ---------- dokunma ----------
   onDown(p) {
-    if (this.dialog || this.shop) return;
+    if (this.dialog || this.shop || this.meta) return;
     if (state.phase === 'end' || state.phase === 'boom') return;
     if (this.mg) { const f = this['mgDown_' + this.mg.type]; if (f) f.call(this, this.mg, p); return; }
     if (state.phase === 'build' && state.places > 0 && p.y > this.slotTop) {
@@ -1881,7 +2023,7 @@ class Build extends Phaser.Scene {
   }
 
   onMove(p) {
-    if (this.dialog || this.shop) return;
+    if (this.dialog || this.shop || this.meta) return;
     if (this.mg) { const f = this['mgMove_' + this.mg.type]; if (f) f.call(this, this.mg, p); return; }
     if (this.pending && !this.drag) {
       // makineler yalnızca inşa evresinde taşınır
@@ -1910,7 +2052,7 @@ class Build extends Phaser.Scene {
   }
 
   onUp(p) {
-    if (this.dialog || this.shop) return;
+    if (this.dialog || this.shop || this.meta) return;
     if (this.mg) { const f = this['mgUp_' + this.mg.type]; if (f) f.call(this, this.mg, p); return; }
     if (this.pending && !this.drag) {
       const i = this.pending.i, v = this.cells[i];
