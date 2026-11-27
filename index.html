@@ -274,7 +274,7 @@ const GRADES = {
   good:    { label: 'İYİ',       color: '#ffe3a8', mult: 1.4, secs: 4 },
   bad:     { label: 'KÖTÜ',      color: '#ff8a7c', mult: 1,   secs: 0 },
 };
-const MG_TEXT = { crank: 'Krank: zamanla!', press: 'Pres: zamanla!', mint: 'Basıcı: basıncı ayarla!', fan: 'Fan: hızlandır!' };
+const MG_TEXT = { crank: 'Krank: bıçağı fırlat!', press: 'Pres: zamanla!', mint: 'Basıcı: basıncı ayarla!', fan: 'Fan: hızlandır!' };
 const RES = {
   spark:  { sym: '✦', color: '#ffd84a' },
   energy: { sym: '⚡', color: '#4fd6e0' },
@@ -1346,38 +1346,67 @@ class Build extends Phaser.Scene {
   }
   grade(mg, perfectT, goodT) { return mg.t <= perfectT ? 'perfect' : mg.t <= goodT ? 'good' : 'bad'; }
 
-  // --- Krank: dönen kol yeşil bölgeden geçerken dokun (tek dokunuş) ---
+  // --- Krank: dönen çarka bıçak fırlat, yeşil hedef alttayken dokun ---
   mgInit_crank(mg) {
-    mg.R = Math.min(mg.ph * 0.3, mg.pw * 0.25);
+    mg.R = Math.min(mg.ph * 0.21, mg.pw * 0.22);
+    mg.wx = mg.cx; mg.wy = mg.ph * 0.43;
     mg.dir = Math.random() < 0.5 ? 1 : -1;
-    mg.zone = Phaser.Math.FloatBetween(0, Math.PI * 2);   // yeşil bölgenin ortası
-    mg.angle = mg.zone + Math.PI;                           // kol karşıdan başlar
-    mg.speed = Math.PI * 2 / 1.25;                          // 1.25 sn'de bir tur
-    mg.hint = this.add.text(mg.cx, mg.ph - 18 * D, 'Kol yeşilden geçerken dokun', { fontFamily: FONT, fontSize: Math.round(14 * D) + 'px', color: C.dim }).setOrigin(0.5);
+    mg.zoneRel = Phaser.Math.FloatBetween(0, Math.PI * 2);    // hedefin çark üzerindeki yeri
+    mg.wa = Math.PI / 2 - mg.zoneRel + Math.PI;               // hedef üstten başlar
+    mg.base = Math.PI * 2 / 1.4; mg.phase = Phaser.Math.FloatBetween(0, 6);
+    mg.thrown = false; mg.kt = 0; mg.hit = false;
+    mg.kStart = mg.wy + mg.R * 1.75;                           // bıçak ucu başlangıçta
+    mg.hint = this.add.text(16 * D, mg.ph - 18 * D, 'Yeşil alta gelince fırlat', { fontFamily: FONT, fontSize: Math.round(13 * D) + 'px', color: C.dim }).setOrigin(0, 0.5);
     mg.panel.add(mg.hint);
   }
+  drawKnife(g, tx, ty, a, R) {
+    // a: uçtan sapa doğru yön
+    const c = Math.cos(a), s = Math.sin(a), px = -s, py = c;
+    const Lb = R * 0.62, Lh = R * 0.42, w = R * 0.13;
+    const bx = tx + c * Lb, by = ty + s * Lb;
+    g.fillStyle(0xdfe6f5, 1).fillTriangle(tx, ty, bx + px * w, by + py * w, bx - px * w, by - py * w);
+    g.fillStyle(0x9aa6c2, 1).fillTriangle(tx, ty, bx, by, bx - px * w, by - py * w);
+    g.lineStyle(w * 1.1, C.brass, 1).lineBetween(bx + px * w * 1.6, by + py * w * 1.6, bx - px * w * 1.6, by - py * w * 1.6);
+    g.lineStyle(w * 1.3, C.copperDark, 1).lineBetween(bx, by, bx + c * Lh, by + s * Lh);
+    g.fillStyle(C.copper, 1).fillCircle(bx + c * Lh, by + s * Lh, w * 0.8);
+  }
   mgStep_crank(mg, dt) {
-    mg.angle += mg.dir * mg.speed * dt;
-    const g = mg.gfx, R = mg.R, rr = R * 0.7;
+    if (!mg.hit) mg.wa += mg.dir * mg.base * (1 + 0.45 * Math.sin(mg.t * 3.2 + mg.phase)) * dt;
+    const g = mg.gfx, R = mg.R, x = mg.wx, y = mg.wy;
     g.clear();
-    g.fillStyle(C.brassDark, 1).fillCircle(mg.cx, mg.cy + 3 * D, R);
-    g.fillStyle(C.brass, 1).fillCircle(mg.cx, mg.cy, R);
-    g.fillStyle(C.brassHi, 0.4).fillCircle(mg.cx - R * 0.2, mg.cy - R * 0.25, R * 0.6);
-    g.fillStyle(0x10162a, 1).fillCircle(mg.cx, mg.cy, R * 0.88);
-    // yeşil bölge (geniş: iyi, dar: mükemmel)
-    const arc = (half, col, w) => { g.lineStyle(w, col, 1); g.beginPath(); g.arc(mg.cx, mg.cy, rr, mg.zone - half, mg.zone + half, false); g.strokePath(); };
-    arc(0.42, 0x2e8a52, R * 0.26);
-    arc(0.16, 0x7fe3a5, R * 0.26);
-    // kol
-    const hx = mg.cx + Math.cos(mg.angle) * rr, hy = mg.cy + Math.sin(mg.angle) * rr;
-    g.lineStyle(R * 0.12, C.copperDark, 1).lineBetween(mg.cx, mg.cy, hx, hy);
-    g.fillStyle(C.copper, 1).fillCircle(mg.cx, mg.cy, R * 0.14);
-    g.fillStyle(C.copperDark, 1).fillCircle(hx, hy + 2 * D, R * 0.18);
-    g.fillStyle(C.copperHi, 1).fillCircle(hx, hy, R * 0.18);
+    // çark
+    g.fillStyle(C.brassDark, 1).fillCircle(x, y + 4 * D, R);
+    g.fillStyle(C.brass, 1).fillCircle(x, y, R);
+    g.fillStyle(0x10162a, 1).fillCircle(x, y, R * 0.8);
+    for (let k = 0; k < 6; k++) { const a = mg.wa + k * Math.PI / 3; g.lineStyle(R * 0.08, C.copperDark, 1).lineBetween(x, y, x + Math.cos(a) * R * 0.78, y + Math.sin(a) * R * 0.78); }
+    g.fillStyle(C.copper, 1).fillCircle(x, y, R * 0.18);
+    // hedef (geniş koyu yeşil: iyi, dar açık yeşil: mükemmel)
+    const z = mg.wa + mg.zoneRel;
+    const arc = (half, col) => { g.lineStyle(R * 0.2, col, 1); g.beginPath(); g.arc(x, y, R * 0.9, z - half, z + half, false); g.strokePath(); };
+    arc(0.42, 0x2e8a52); arc(0.16, 0x7fe3a5);
+    // alttaki nişan işareti
+    g.fillStyle(0xffffff, 0.5).fillTriangle(x - 7 * D, y + R + 8 * D, x + 7 * D, y + R + 8 * D, x, y + R + 1 * D);
+    // bıçak
+    if (mg.hit) {
+      const a = mg.wa + mg.knRel, tx = x + Math.cos(a) * R * 0.82, ty = y + Math.sin(a) * R * 0.82;
+      this.drawKnife(g, tx, ty, a, R);
+    } else {
+      if (mg.thrown) mg.kt = Math.min(1, mg.kt + dt / 0.09);
+      const ty = Phaser.Math.Linear(mg.kStart, y + R * 0.82, mg.kt);
+      this.drawKnife(g, x, ty, Math.PI / 2, R);
+      if (mg.kt >= 1) {
+        mg.hit = true; mg.knRel = Math.PI / 2 - mg.wa;
+        const d = Math.abs(Phaser.Math.Angle.Wrap(Math.PI / 2 - z));
+        const gr = d < 0.16 ? 'perfect' : d < 0.42 ? 'good' : 'bad';
+        beep(gr === 'bad' ? 160 : 520, 0.07, 'square', 0.18); buzz(20);
+        this.cameras.main.shake(70, 0.004);
+        this.time.delayedCall(220, () => { if (this.mg === mg) this.closeMinigame(gr); });
+      }
+    }
   }
   mgDown_crank(mg) {
-    const d = Math.abs(Phaser.Math.Angle.Wrap(mg.angle - mg.zone));
-    this.closeMinigame(d < 0.16 ? 'perfect' : d < 0.42 ? 'good' : 'bad');
+    if (mg.thrown) return;
+    mg.thrown = true; beep(1200, 0.04, 'triangle', 0.1);
   }
 
   // --- Pres: ritim çubuğu ---
