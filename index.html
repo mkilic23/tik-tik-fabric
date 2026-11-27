@@ -213,7 +213,13 @@ function drawMachine(scene, type, s, withShadow = true) {
 // ---------- oyun kuralları (denge için tek yer) ----------
 const RULES = {
   roundTime: 60,                       // saniye
-  goals: [30, 60, 100, 150, 220],      // tur hedefleri (✦)
+  goals: [15, 25, 40, 55, 75, 100, 130, 160, 190, 225, 260, 300], // 12 tur hedefi (✦): 3 bölüm x 4 tur
+  roundsPer: 4,                        // bölüm başına tur
+  chapters: [                          // bölüm zorluğu: ısınma çarpanı ve patlama geri sayımı
+    { name: 'Atölye', heat: 0.7, boom: 5 },
+    { name: 'Şehir Siparişi', heat: 0.9, boom: 4 },
+    { name: 'Fenerler Festivali', heat: 1.0, boom: 3 },
+  ],
   startPlaces: 3,                      // 1. turda yerleştirme hakkı
   placesPerRound: 2,                   // sonraki turlarda eklenen hak
   startMoney: 10,
@@ -223,7 +229,6 @@ const RULES = {
   needAt: 0.7,                         // bu ısıda ! çıkar
   tapAt: 0.35,                         // bu ısının üstünde bakım yapılabilir
   afterGrade: { perfect: 0, good: 0.15, bad: 0.35 }, // bakımdan sonra kalan ısı
-  boomDelay: 3,                        // basınç %100 olunca patlamaya kalan süre
   carryHeat: 0.6,                      // tur arasında ısının bu kadarı kalır
   missHeat: 0.6,                       // hedefin eksik oranı x 0.6 = eklenen ısı
   winCool: 0.1,                        // hedef tutunca ek soğuma
@@ -251,18 +256,32 @@ const SHOP = {
 };
 const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]];  // 0 yukarı, 1 sağ, 2 aşağı, 3 sol
 const DEFAULT_ROT = { crank: 1, press: 0, mint: 0, fan: 0 };
+// patron turları (her bölümün son turu)
+const BOSS = {
+  3:  { name: 'Sıcak Hava Dalgası', desc: 'Bu turda makineler %40 hızlı ısınır.', heat: 1.4,
+        lines: ['Eyvah, sıcak hava dalgası geliyor! Bu vardiya bütün makineler %40 daha hızlı ısınacak.', 'Fan ve Yalıtım Plakası tam bugünlük. Hazırlan!'] },
+  7:  { name: 'Gevşek Vidalar', desc: 'Her 10 saniyede bir makine aniden ısınır.', jolt: 10, joltAmt: 0.35,
+        lines: ['Bu makinelerin vidaları gevşemiş... Bu vardiya ara ara bir makine aniden ısınacak.', 'Gözünü dört aç, kırmızı parlayanı hemen soğut!'] },
+  11: { name: 'Final: Sıcak ve Gevşek', desc: '%25 hızlı ısınma ve her 12 saniyede ani ısınma.', heat: 1.25, jolt: 12, joltAmt: 0.3,
+        lines: ['Final vardiyası evlat! Hem hava sıcak hem vidalar gevşek.', 'Bunu da atlatırsak festivalin bütün fenerleri bizden. Haydi!'] },
+};
 const STORY = {
   intro: [
     'Hoş geldin evlat! Ben Nuri Usta. Bu atölye dedemden kalma; makineler eski ama gönülleri sağlam.',
-    'Şehrin fenerleri için kıvılcım lazım. 5 vardiya boyunca hedefleri tutturursan sipariş bizim!',
+    'Şehrin fenerleri için kıvılcım lazım. 3 bölüm, 12 vardiya var. Her bölümün son vardiyası zorlu bir patron turu!',
     'Yalnız dikkat: makineler ısınır. Bir türün hepsi kızarsa basınç tavan yapar ve... BUM! Hadi, işbaşı!',
   ],
   win: [
-    'Helal olsun! 5 vardiyayı tek parça bitirdin.',
-    'Şehrin fenerleri senin sayende yanıyor. Yarın daha büyük siparişler var, dinlen usta!',
+    'Helal olsun! 12 vardiyayı tek parça bitirdin, festival fenerleri senin sayende yanıyor!',
+    'Artık sen de bir ustasın. Yarın daha büyük siparişler var, dinlen biraz!',
   ],
   again: [
-    'Yeni vardiya evlat! 5 tur boyunca hedefleri tuttur, makineleri kızdırma. Hadi bakalım!',
+    'Yeni koşu evlat! 12 vardiya boyunca hedefleri tuttur, makineleri kızdırma. Hadi bakalım!',
+  ],
+  chapter: [
+    null,
+    ['İlk bölümü atlattın, aferin! Şimdi şehrin fabrikaları da sipariş veriyor.', 'Bölüm 2: Şehir Siparişi. Hedefler büyüyor, makineler daha çabuk ısınacak.'],
+    ['Son bölüm evlat! Fenerler Festivali yaklaşıyor.', 'Bölüm 3: Burada her şey daha hızlı. Halkaları ve plakaları akıllıca kullan!'],
   ],
   boom: [
     'Eyvah eyvah! Atölye uçtu gitti...',
@@ -293,7 +312,7 @@ function newRun() {
   state.rot = new Array(COLS * ROWS).fill(null);   // makine yönleri
   state.heat = new Array(COLS * ROWS).fill(0);     // makine ısıları (0-1)
   state.buf = new Array(COLS * ROWS).fill(0);      // Krank'ta biriken enerji
-  state.boomT = RULES.boomDelay;
+  state.boomT = RULES.chapters[0].boom;
   state.needIntro = true;
   state.mod = new Array(COLS * ROWS).fill(null);   // takılı modüller
   state.offers = null; state.shopOpen = false; state.rerolls = 0;
@@ -497,7 +516,7 @@ class Build extends Phaser.Scene {
 
   updateHud(force) {
     const r = state.res, goal = RULES.goals[state.round];
-    this.roundText.setText(`Tur ${state.round + 1} / ${RULES.goals.length}`);
+    this.roundText.setText(`Bölüm ${this.chapter() + 1} · Tur ${state.round + 1}/${RULES.goals.length}${BOSS[state.round] ? ' ☠' : ''}`).setColor(BOSS[state.round] ? '#ff8a7c' : C.cream);
     const b = this.bar, g = this.barG, f = Math.min(1, r.spark / goal);
     g.clear();
     g.fillStyle(0x0b0f1c, 1).fillRoundedRect(b.x, b.y, b.w, b.h, b.h / 2);
@@ -758,7 +777,7 @@ class Build extends Phaser.Scene {
       } else if (presses.every(i => this.outputBlocked(i))) {
         this.setBanner('⚠ Pres\'in çıkışı kapalı!', 'Sarı ok boş bir kareyi göstermeli; kıvılcım oradan çıkar. Pres\'e dokunup döndür.', 0xe0564a);
       } else {
-        this.setBanner('3 / 3   Hazırsın! ▶ Başlat\'a bas', 'Mavi çizgi = enerji bağlantısı. 60 saniyede ✦ 30 topla.', 0x5fd38a);
+        this.setBanner('3 / 3   Hazırsın! ▶ Başlat\'a bas', `Mavi çizgi = enerji bağlantısı. 60 saniyede ✦ ${RULES.goals[0]} topla.`, 0x5fd38a);
         this.goRing.setVisible(true);
       }
     } else if (state.phase === 'run') {
@@ -791,7 +810,7 @@ class Build extends Phaser.Scene {
     state.res.spark = 0;
     state.res.energy = 0;
     state.buf.fill(0);
-    state.boomT = RULES.boomDelay;
+    state.boomT = this.boomDelay();
     // her makine biraz farklı ısınır, böylece uyarılar aynı anda gelmez
     this.cells.forEach((v, i) => {
       if (!v) return;
@@ -799,6 +818,8 @@ class Build extends Phaser.Scene {
       v.rateJ = Phaser.Math.FloatBetween(0.8, 1.2);
       state.heat[i] = Math.max(state.heat[i] || 0, Phaser.Math.FloatBetween(0, 0.25));
     });
+    state.joltT = BOSS[state.round] && BOSS[state.round].jolt;
+    if (BOSS[state.round]) this.flashTip('☠ Patron turu: ' + BOSS[state.round].name, BOSS[state.round].desc, 0xe0564a, 3500);
     beep(392, 0.12, 'triangle', 0.2); setTimeout(() => beep(523, 0.12, 'triangle', 0.2), 110); setTimeout(() => beep(784, 0.2, 'triangle', 0.2), 220);
     buzz(30);
     this.refreshPhase();
@@ -898,18 +919,18 @@ class Build extends Phaser.Scene {
     if (R.boom) {
       title = 'FABRİKA PATLADI!';
       big = `Tur ${R.round + 1} / ${RULES.goals.length}`;
-      sub = R.round === 0 ? 'Bir türün bütün makineleri kızınca basınç %100 olur.\nIsınanları mini oyunla soğut, Fan 2×2 alanı korur.' : `${R.round} tur dayandın. Bir dahakine daha uzun!`;
+      sub = R.round === 0 ? 'Bir türün bütün makineleri kızınca basınç %100 olur.\nIsınanları mini oyunla soğut, Fan 2×2 alanı korur.' : `Bölüm ${this.chapter(R.round) + 1}, ${R.round} tur dayandın. Bir dahakine daha uzun!`;
       label = 'Yeniden kur'; style = BTN_BRASS;
     } else if (R.last) {
       title = R.won ? 'Fabrika ayakta!' : 'Zor da olsa ayakta!';
       big = `✦ ${R.spark} / ${R.goal}`;
-      sub = `Prototipin ${RULES.goals.length} turunu patlamadan bitirdin.\nSon basınç: %${Math.round(state.pressure)}`;
+      sub = `${RULES.chapters.length} bölümün ${RULES.goals.length} turunu patlamadan bitirdin.\nSon basınç: %${Math.round(state.pressure)}`;
       label = 'Yeniden başla'; style = BTN_GO;
     } else {
       title = R.won ? 'Hedef tuttu!' : 'Hedef tutmadı';
       big = `✦ ${R.spark} / ${R.goal}`;
       const p = R.delta > 0 ? `Basınç +%${R.delta}  ▲` : R.delta < 0 ? `Basınç %${-R.delta} azaldı  ▼` : '';
-      sub = (R.bonus ? `Erken bitirme bonusu: +${R.bonus} 💎\n` : '') + (p ? p + '\n' : '') + `Sonraki hedef: ✦ ${RULES.goals[state.round + 1]}  ·  +${RULES.placesPerRound} hak`;
+      sub = (R.bonus ? `Erken bitirme bonusu: +${R.bonus} 💎\n` : '') + (p ? p + '\n' : '') + (BOSS[state.round + 1] ? `Sonraki: ☠ Patron turu (✦ ${RULES.goals[state.round + 1]})` : `Sonraki hedef: ✦ ${RULES.goals[state.round + 1]}  ·  +${RULES.placesPerRound} hak`);
       label = 'Sonraki tur  ▶'; style = R.won ? BTN_GO : BTN_BRASS;
     }
     const t1 = this.add.text(cx, cy - ch * 0.32, title, { fontFamily: FONT, fontSize: Math.round(cw * (R.boom ? 0.088 : 0.1)) + 'px', fontStyle: '700', color: good ? '#7fe3a5' : R.boom ? '#ffb36b' : '#ff8a7c' }).setOrigin(0.5);
@@ -934,7 +955,12 @@ class Build extends Phaser.Scene {
       this.resultBox.destroy();
       state.offers = null; state.rerolls = 0; state.shopOpen = true;
       this.refreshPhase();
-      this.openShop();
+      // bölüm geçişi ve patron turu öncesi Nuri Usta konuşur, sonra dükkan açılır
+      const lines = [];
+      if (state.round % RULES.roundsPer === 0 && STORY.chapter[this.chapter()]) lines.push(...STORY.chapter[this.chapter()]);
+      if (BOSS[state.round]) lines.push(...BOSS[state.round].lines);
+      if (lines.length) { state.shopOpen = false; this.showDialog(lines, () => { state.shopOpen = true; this.openShop(); }); }
+      else this.openShop();
       if (state.pressure >= 30 && !state.ventTaught) {
         state.ventTaught = true;
         this.flashTip('Fabrika sıcak mı? Soğut!', `Mavi ❄ Soğut düğmesi ${RULES.ventCost} 💎 karşılığında tüm makinelerin ısısını %${Math.round(RULES.ventCool * 100)} düşürür.`, 0x8fb4ff, 6000);
@@ -1102,6 +1128,24 @@ class Build extends Phaser.Scene {
   // =====================================================================
   // ISI VE BASINÇ
   // =====================================================================
+  chapter(r = state.round) { return Math.min(RULES.chapters.length - 1, Math.floor(r / RULES.roundsPer)); }
+  boomDelay() { return RULES.chapters[this.chapter()].boom; }
+  tickJolt(dt) {
+    // patron: gevşek vidalar, ara ara bir makine aniden ısınır
+    const B = BOSS[state.round];
+    if (!B || !B.jolt || this.mg || this.dialog) return;
+    state.joltT = (state.joltT ?? B.jolt) - dt;
+    if (state.joltT > 0) return;
+    state.joltT = B.jolt;
+    const list = state.grid.map((t, i) => (t && state.heat[i] < 1 ? i : -1)).filter(i => i >= 0);
+    if (!list.length) return;
+    const i = Phaser.Utils.Array.GetRandom(list), c = this.cellCenter(i);
+    state.heat[i] = Math.min(1, state.heat[i] + B.joltAmt);
+    this.cameras.main.shake(140, 0.006); beep(140, 0.15, 'sawtooth', 0.15); buzz([30, 30, 30]);
+    const t = this.add.text(c.x, c.y - this.cell * 0.2, 'Vida gevşedi!', { fontFamily: FONT, fontSize: Math.round(this.cell * 0.2) + 'px', fontStyle: '700', color: '#ff8a7c', stroke: '#0b0f1c', strokeThickness: 4 * D }).setOrigin(0.5).setDepth(90);
+    this.tweens.add({ targets: t, y: t.y - this.cell * 0.5, alpha: 0, duration: 1100, onComplete: () => t.destroy() });
+    const v = this.cells[i]; if (v) this.tweens.add({ targets: v, angle: { from: -8, to: 8 }, duration: 50, yoyo: true, repeat: 3, onComplete: () => v.setAngle(0) });
+  }
   tickHeat(dt) {
     if (this.mg || this.dialog) return;
     this.cells.forEach((v, i) => {
@@ -1114,6 +1158,7 @@ class Build extends Phaser.Scene {
         if (v.boost && state.time > v.boost.until) rate *= 1.25;
         if (this.hasRingNear(i)) rate *= RULES.ringHeat;
         if (state.mod[i] === 'plate') rate *= RULES.plateHeat;
+        rate *= RULES.chapters[this.chapter()].heat * ((BOSS[state.round] && BOSS[state.round].heat) || 1);
         h = Math.min(1, h + rate * dt);
         state.heat[i] = h;
       }
@@ -1148,13 +1193,13 @@ class Build extends Phaser.Scene {
     state.pressure = this.computePressure();
     if (state.pressure >= 100 && !this.dialog) {
       if (!state.pressureTaught) { state.pressureTaught = true; }
-      if (!this.mg) state.boomT = (state.boomT ?? RULES.boomDelay) - dt;
+      if (!this.mg) state.boomT = (state.boomT ?? this.boomDelay()) - dt;
       const n = Math.max(1, Math.ceil(state.boomT));
       if (n !== this.lastCount) { this.lastCount = n; beep(1100, 0.12, 'square', 0.15); buzz(40); }
       this.countText.setText(`⚠ ${n}`).setVisible(true).setScale(1 + (state.boomT % 1) * 0.3);
       if (state.boomT <= 0) { this.countText.setVisible(false); this.explode(); }
     } else {
-      state.boomT = RULES.boomDelay; this.lastCount = null;
+      state.boomT = this.boomDelay(); this.lastCount = null;
       this.countText.setVisible(false);
     }
   }
@@ -1211,6 +1256,7 @@ class Build extends Phaser.Scene {
     const start = () => { full = lines[li]; shown = 0; layout(); more.setAlpha(0.3); };
     start();
     const ev = this.time.addEvent({ delay: 22, loop: true, callback: () => {
+      if (!txt.scene) { ev.remove(); return; }
       if (shown < full.length) { shown += 1; txt.setText(full.slice(0, shown)); if (shown % 3 === 0) beep(420 + Math.random() * 120, 0.03, 'triangle', 0.05); if (shown >= full.length) more.setAlpha(1); }
     } });
     this.tweens.add({ targets: more, x: '-=4', duration: 400, yoyo: true, repeat: -1 });
@@ -1551,6 +1597,7 @@ class Build extends Phaser.Scene {
     this.cells.forEach(v => { if (v && v.type === 'fan') v.setAlpha(v.svc === 'broken' ? 0.45 : 1); });
     state.res.energy = state.buf.reduce((a, b) => a + b, 0);
     this.tickHeat(dt);
+    this.tickJolt(dt);
     this.mgUpdate(dt);
     this.tickPressure(dt);
     if (state.phase !== 'run') return;
