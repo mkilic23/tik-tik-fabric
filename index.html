@@ -54,6 +54,14 @@ const MACHINES = {
   fan:   { name: 'Fan',    sym: '',  color: 0x8fb4ff, dark: 0x3e62b0 },
 };
 const ORDER = ['crank', 'press', 'mint', 'fan'];
+// her türün gövde rengi: acele anında makineler rengiyle ayırt edilir
+const BODY = {
+  crank: { dark: 0x1d4a57, mid: 0x2f7484, base: 0x3f97a8, hi: 0x8fe0ea },
+  press: { dark: 0x7a5a12, mid: 0xb3861d, base: 0xd9a82c, hi: 0xffe08a },
+  mint:  { dark: 0x1f5a2e, mid: 0x2f8a46, base: 0x45a85c, hi: 0xa3e6a8 },
+  fan:   { dark: 0x2b3f7a, mid: 0x4563ad, base: 0x5b82cf, hi: 0xb5cdff },
+};
+const ALERT_SYM = { crank: '⚡', press: '✦', mint: '💎', fan: '❄' };
 // oyuncuya gösterilen tarif ve açıklama
 const INFO = {
   crank: { recipe: '→ ⚡ (2 yön)', title: 'Krank: enerji üretir',     body: 'Enerjiyi sadece mavi okların gösterdiği 2 komşuya verir. Dokun: döndür.' },
@@ -156,12 +164,13 @@ function drawMachine(scene, type, s, withShadow = true) {
   }
 
   // gövde: alt kalınlık + ana yüz + üst parlama
-  g.fillStyle(C.copperDark, 1).fillRoundedRect(-s / 2, top + depth, s, h, r);
-  g.fillStyle(C.copperMid, 1).fillRoundedRect(-s / 2, top, s, h, r);
-  g.fillStyle(C.copper, 1).fillRoundedRect(-s / 2 + s * 0.03, top + s * 0.02, s * 0.94, h * 0.8, r * 0.85);
-  g.fillStyle(C.copperHi, 0.55).fillRoundedRect(-s / 2 + s * 0.07, top + s * 0.04, s * 0.86, s * 0.1, { tl: r * 0.7, tr: r * 0.7, bl: s * 0.02, br: s * 0.02 });
+  const B = BODY[type];
+  g.fillStyle(B.dark, 1).fillRoundedRect(-s / 2, top + depth, s, h, r);
+  g.fillStyle(B.mid, 1).fillRoundedRect(-s / 2, top, s, h, r);
+  g.fillStyle(B.base, 1).fillRoundedRect(-s / 2 + s * 0.03, top + s * 0.02, s * 0.94, h * 0.8, r * 0.85);
+  g.fillStyle(B.hi, 0.55).fillRoundedRect(-s / 2 + s * 0.07, top + s * 0.04, s * 0.86, s * 0.1, { tl: r * 0.7, tr: r * 0.7, bl: s * 0.02, br: s * 0.02 });
   // panel çizgisi
-  g.fillStyle(C.copperMid, 1).fillRect(-s * 0.42, top + h * 0.83, s * 0.84, s * 0.02);
+  g.fillStyle(B.mid, 1).fillRect(-s * 0.42, top + h * 0.83, s * 0.84, s * 0.02);
 
   // makineye özgü ön yüz
   const gy = top + h * 0.46;
@@ -1296,12 +1305,15 @@ class Build extends Phaser.Scene {
     const s = this.cell;
     const a = this.add.container(v.x + s * 0.3, v.y - s * 0.36).setDepth(45);
     const g = this.add.graphics();
-    const col = kind === 'broken' ? 0xe0564a : 0xffc23d;
-    g.fillStyle(0x000000, 0.35).fillCircle(0, 2 * D, s * 0.17);
-    g.fillStyle(col, 1).fillCircle(0, 0, s * 0.17);
-    g.lineStyle(2 * D, 0x2a1405, 1).strokeCircle(0, 0, s * 0.17);
-    const t = this.add.text(0, 0, kind === 'broken' ? '✕' : '!', { fontFamily: FONT, fontSize: Math.round(s * 0.24) + 'px', fontStyle: '700', color: '#2a1405' }).setOrigin(0.5);
-    a.add([g, t]);
+    // balon makinenin renginde ve simgesiyle: hangi mini oyunun geleceği belli olur
+    const col = MACHINES[v.type].color, R = s * 0.19, broken = kind === 'broken';
+    g.fillStyle(0x000000, 0.35).fillCircle(0, 2 * D, R);
+    g.fillStyle(broken ? 0xe0564a : 0xffc23d, 1).fillCircle(0, 0, R);
+    g.fillStyle(col, 1).fillCircle(0, 0, R * 0.74);
+    g.lineStyle(2 * D, 0x2a1405, 1).strokeCircle(0, 0, R);
+    const t = this.add.text(0, 0, ALERT_SYM[v.type], { fontFamily: FONT, fontSize: Math.round(s * 0.2) + 'px', fontStyle: '700', color: '#0d1220' }).setOrigin(0.5);
+    const tag = this.add.text(R * 0.75, -R * 0.75, broken ? '✕' : '!', { fontFamily: FONT, fontSize: Math.round(s * 0.17) + 'px', fontStyle: '700', color: '#ffffff', stroke: broken ? '#7a1a12' : '#7a4a05', strokeThickness: 4 * D }).setOrigin(0.5);
+    a.add([g, t, tag]);
     this.tweens.add({ targets: a, y: a.y - s * 0.06, duration: kind === 'broken' ? 180 : 320, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     v.alert = a;
   }
