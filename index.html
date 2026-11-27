@@ -226,7 +226,10 @@ const RULES = {
   pressBroken: 4,                      // bozuk makine: saniyede +%4 basınç
   pressNeed: 0.8,                      // bakım bekleyen makine: saniyede +%0.8
   fanCool: 0.5,                        // yanında çalışan Fan varsa basınç yarıya iner
-  pressWinDrop: 20,                    // hedef tutunca basınç %20 düşer
+  pressWinDrop: 25,                    // hedef tutunca basınç %25 düşer
+  pressCalm: 0.8,                      // hiçbir makine bakım beklemiyorsa saniyede %0.8 düşer
+  pressPerfect: 4, pressGood: 1.5,     // Mükemmel / İyi bakım basıncı bu kadar düşürür
+  ventCost: 5, ventDrop: 15,           // tahliye vanası: 5 ● ile %15 düşür (inşa evresinde)
   pressMiss: 80,                       // hedefin eksik kalan oranı x 80 = eklenen basınç                           // mini oyun süre sınırı
   bonusEvery: 3,                       // hedef tutunca: kalan her 3 sn = +1 ● bonus
 };
@@ -242,7 +245,7 @@ const GRADES = {
   good:    { label: 'İYİ',       color: '#ffe3a8', mult: 1.4, secs: 4 },
   bad:     { label: 'KÖTÜ',      color: '#ff8a7c', mult: 1,   secs: 0 },
 };
-const MG_TEXT = { crank: 'Krank: ışığı takip et!', press: 'Pres: zamanla!', mint: 'Basıcı: basıncı ayarla!', fan: 'Fan: hızlandır!' };
+const MG_TEXT = { crank: 'Krank: zamanla!', press: 'Pres: zamanla!', mint: 'Basıcı: basıncı ayarla!', fan: 'Fan: hızlandır!' };
 const RES = {
   spark:  { sym: '✦', color: '#ffd84a' },
   energy: { sym: '⚡', color: '#4fd6e0' },
@@ -414,7 +417,9 @@ class Build extends Phaser.Scene {
     this.timeText = mk(2, C.cream);
     // basınç çubuğu (▲)
     const pbH = Math.max(14 * D, fs * 0.95);
-    this.pbar = { x: pad, y: row3 - pbH / 2, w: W - pad * 2, h: pbH };
+    const vbW = Math.min(W * 0.3, 128 * D);
+    this.pbar = { x: pad, y: row3 - pbH / 2, w: W - pad * 2 - vbW - 8 * D, h: pbH };
+    this.ventBtn = makeButton(this, W - pad - vbW / 2, row3, vbW, Math.max(pbH * 1.5, 28 * D), `▼ %${RULES.ventDrop}  ${RULES.ventCost}●`, { base: 0x8fb4ff, dark: 0x3e62b0, text: '#0d1a33' }, () => this.vent());
     this.pbarG = this.add.graphics();
     this.pText = this.add.text(pad + 10 * D, row3, '', { fontFamily: FONT, fontSize: Math.round(fs * 0.8) + 'px', fontStyle: '700', color: '#f6ecdb' }).setOrigin(0, 0.5);
     this.lastRes = {};
@@ -456,7 +461,25 @@ class Build extends Phaser.Scene {
     });
   }
 
+  vent() {
+    if (state.phase !== 'build' || state.pressure <= 0) return;
+    if (state.res.money < RULES.ventCost) {
+      this.cameras.main.shake(80, 0.004); sfx.bad();
+      this.flashTip('Yeterli para yok', `Tahliye için ${RULES.ventCost} ● gerekiyor. Basıcı para üretir.`, MACHINES.mint.color, 2200);
+      return;
+    }
+    state.res.money -= RULES.ventCost;
+    state.pressure = Math.max(0, state.pressure - RULES.ventDrop);
+    beep(900, 0.25, 'sawtooth', 0.06); setTimeout(() => beep(500, 0.3, 'sawtooth', 0.05), 80); buzz(30);
+    const smoke = this.add.particles(0, 0, 'spark', { speed: { min: 40 * D, max: 160 * D }, angle: { min: 240, max: 300 }, lifespan: 700, scale: { start: 0.9 * D, end: 0 }, alpha: { start: 0.7, end: 0 }, tint: [0xdfe6f5, 0x9aa6c2], emitting: false }).setDepth(60);
+    smoke.explode(30, this.ventBtn.x, this.ventBtn.y);
+    this.time.delayedCall(800, () => smoke.destroy());
+    this.refreshPhase();
+  }
+
   refreshPhase() {
+    const canVent = state.phase === 'build' && state.pressure > 0;
+    this.ventBtn.setAlpha(canVent ? (state.res.money >= RULES.ventCost ? 1 : 0.5) : 0.25);
     const build = state.phase === 'build';
     this.goBtn.setVisible(build || this.canFinish());
     this.goBtn.label.setText(build ? '▶  Başlat' : `✓ Bitir +${this.earlyBonus()} ●`);
@@ -668,6 +691,10 @@ class Build extends Phaser.Scene {
       state.result = null;
       this.resultBox.destroy();
       this.refreshPhase();
+      if (state.pressure >= 30 && !state.ventTaught) {
+        state.ventTaught = true;
+        this.flashTip('Basınç yüksek mi? Tahliye et!', `Sağ üstteki mavi vana ${RULES.ventCost} ● karşılığında basıncı %${RULES.ventDrop} düşürür. Mükemmel bakımlar da basıncı azaltır.`, 0x8fb4ff, 6000);
+      }
     } else {
       newRun();
       this.boomed = false;
@@ -688,6 +715,7 @@ class Build extends Phaser.Scene {
       state.pressureTaught = true;
       this.flashTip('▲ Basınç yükseliyor!', 'Bakım bekleyen ve bozuk makineler basınç yapar. %100 olursa fabrika patlar!', 0xff8a3c, 4500);
     }
+    if (gain === 0 && !this.mg) state.pressure = Math.max(0, state.pressure - RULES.pressCalm * dt);
     state.pressure = Math.min(100, state.pressure + gain * dt);
     if (state.pressure >= 100) this.explode();
   }
@@ -763,7 +791,7 @@ class Build extends Phaser.Scene {
   }
 
   tickService(v, i, dt) {
-    if (this.mg && this.mg.i === i) return;
+    if (this.mg) return; // mini oyun açıkken diğer makineler bekler
     if (v.svc === 'ok') {
       v.needIn -= dt;
       if (v.needIn <= 0) {
@@ -864,6 +892,12 @@ class Build extends Phaser.Scene {
     else { beep(200, 0.15, 'sawtooth', 0.1); buzz([10, 30, 10]); }
 
     this.resetService(v);
+    const relief = grade === 'perfect' ? RULES.pressPerfect : grade === 'good' ? RULES.pressGood : 0;
+    if (relief && state.pressure > 0) {
+      state.pressure = Math.max(0, state.pressure - relief);
+      const pt = this.add.text(this.pbar.x + this.pbar.w * 0.5, this.pbar.y + this.pbar.h / 2, `▼ %${relief}`, { fontFamily: FONT, fontSize: Math.round(this.pbar.h * 0.9) + 'px', fontStyle: '700', color: '#7fe3a5', stroke: '#0b0f1c', strokeThickness: 3 * D }).setOrigin(0.5).setDepth(60);
+      this.tweens.add({ targets: pt, y: pt.y + 24 * D, alpha: 0, duration: 800, onComplete: () => pt.destroy() });
+    }
     const applyBoost = (target) => { if (R.mult > 1) target.boost = { mult: R.mult, until: state.time - R.secs }; };
     if (v.type === 'fan') {
       // fan: komşularını hızlandırır
@@ -893,65 +927,39 @@ class Build extends Phaser.Scene {
   }
   grade(mg, perfectT, goodT) { return mg.t <= perfectT ? 'perfect' : mg.t <= goodT ? 'good' : 'bad'; }
 
-  // --- Krank: dönen ışığı parmağınla takip et ---
+  // --- Krank: dönen kol yeşil bölgeden geçerken dokun (tek dokunuş) ---
   mgInit_crank(mg) {
     mg.R = Math.min(mg.ph * 0.3, mg.pw * 0.25);
-    mg.angle = -Math.PI / 2;        // parmağın (kol) açısı
-    mg.mark = -Math.PI / 2;         // dönen ışık
     mg.dir = Math.random() < 0.5 ? 1 : -1;
-    mg.started = false; mg.touch = false; mg.on = 0; mg.run = 0; mg.need = 1.5; mg.beepT = 0;
-    mg.hint = this.add.text(mg.cx, mg.ph - 18 * D, 'Kolu tut, dönen ışığı takip et', { fontFamily: FONT, fontSize: Math.round(14 * D) + 'px', color: C.dim }).setOrigin(0.5);
+    mg.zone = Phaser.Math.FloatBetween(0, Math.PI * 2);   // yeşil bölgenin ortası
+    mg.angle = mg.zone + Math.PI;                           // kol karşıdan başlar
+    mg.speed = Math.PI * 2 / 1.25;                          // 1.25 sn'de bir tur
+    mg.hint = this.add.text(mg.cx, mg.ph - 18 * D, 'Kol yeşilden geçerken dokun', { fontFamily: FONT, fontSize: Math.round(14 * D) + 'px', color: C.dim }).setOrigin(0.5);
     mg.panel.add(mg.hint);
   }
   mgStep_crank(mg, dt) {
-    const R = mg.R, rr = R * 0.66;
-    let near = false;
-    if (mg.started) {
-      mg.mark += mg.dir * dt * Math.PI * 2 * 0.75 * (1 + mg.run * 0.35);   // giderek hızlanır
-      mg.run += dt;
-      let d = Math.abs(Phaser.Math.Angle.Wrap(mg.angle - mg.mark));
-      near = mg.touch && d < 0.42;
-      if (near) {
-        mg.on += dt;
-        mg.beepT -= dt;
-        if (mg.beepT <= 0) { mg.beepT = 0.18; beep(520 + mg.on * 300, 0.04, 'square', 0.08); buzz(5); }
-      }
-      if (mg.on >= mg.need) {
-        const acc = mg.on / mg.run;   // ne kadar süre üstünde kaldın
-        this.closeMinigame(acc > 0.85 ? 'perfect' : acc > 0.6 ? 'good' : 'bad');
-        return;
-      }
-    }
-    const g = mg.gfx, prog = Math.min(1, mg.on / mg.need);
+    mg.angle += mg.dir * mg.speed * dt;
+    const g = mg.gfx, R = mg.R, rr = R * 0.7;
     g.clear();
     g.fillStyle(C.brassDark, 1).fillCircle(mg.cx, mg.cy + 3 * D, R);
     g.fillStyle(C.brass, 1).fillCircle(mg.cx, mg.cy, R);
     g.fillStyle(C.brassHi, 0.4).fillCircle(mg.cx - R * 0.2, mg.cy - R * 0.25, R * 0.6);
-    g.fillStyle(0x10162a, 1).fillCircle(mg.cx, mg.cy, R * 0.86);
-    g.lineStyle(R * 0.1, 0x1c2440, 1).strokeCircle(mg.cx, mg.cy, rr);
-    if (prog > 0) {
-      g.lineStyle(R * 0.1, 0x4fd6e0, 1);
-      g.beginPath(); g.arc(mg.cx, mg.cy, R * 0.94, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * prog, false); g.strokePath();
-    }
-    // dönen ışık
-    const mx = mg.cx + Math.cos(mg.mark) * rr, my = mg.cy + Math.sin(mg.mark) * rr;
-    g.fillStyle(0x4fd6e0, near ? 0.45 : 0.22).fillCircle(mx, my, R * 0.34);
-    g.fillStyle(near ? 0xffffff : 0x4fd6e0, 1).fillCircle(mx, my, R * 0.14);
+    g.fillStyle(0x10162a, 1).fillCircle(mg.cx, mg.cy, R * 0.88);
+    // yeşil bölge (geniş: iyi, dar: mükemmel)
+    const arc = (half, col, w) => { g.lineStyle(w, col, 1); g.beginPath(); g.arc(mg.cx, mg.cy, rr, mg.zone - half, mg.zone + half, false); g.strokePath(); };
+    arc(0.42, 0x2e8a52, R * 0.26);
+    arc(0.16, 0x7fe3a5, R * 0.26);
     // kol
     const hx = mg.cx + Math.cos(mg.angle) * rr, hy = mg.cy + Math.sin(mg.angle) * rr;
     g.lineStyle(R * 0.12, C.copperDark, 1).lineBetween(mg.cx, mg.cy, hx, hy);
     g.fillStyle(C.copper, 1).fillCircle(mg.cx, mg.cy, R * 0.14);
-    g.fillStyle(C.copperDark, 1).fillCircle(hx, hy + 2 * D, R * 0.2);
-    g.fillStyle(near ? C.copperHi : C.copper, 1).fillCircle(hx, hy, R * 0.2);
-    if (mg.started && mg.touch && !near) { g.lineStyle(3 * D, 0xe0564a, 0.9).strokeCircle(hx, hy, R * 0.26); }
+    g.fillStyle(C.copperDark, 1).fillCircle(hx, hy + 2 * D, R * 0.18);
+    g.fillStyle(C.copperHi, 1).fillCircle(hx, hy, R * 0.18);
   }
-  mgDown_crank(mg, p) { mg.touch = true; this.mgMove_crank(mg, p, true); if (!mg.started) { mg.started = true; mg.mark = mg.angle + mg.dir * 0.3; } }
-  mgMove_crank(mg, p, force) {
-    if (!mg.touch && !force) return;
-    const l = mg.local(p);
-    mg.angle = Math.atan2(l.y - mg.cy, l.x - mg.cx);
+  mgDown_crank(mg) {
+    const d = Math.abs(Phaser.Math.Angle.Wrap(mg.angle - mg.zone));
+    this.closeMinigame(d < 0.16 ? 'perfect' : d < 0.42 ? 'good' : 'bad');
   }
-  mgUp_crank(mg) { mg.touch = false; }
 
   // --- Pres: ritim çubuğu ---
   mgInit_press(mg) {
