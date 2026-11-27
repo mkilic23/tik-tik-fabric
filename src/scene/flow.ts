@@ -4,7 +4,7 @@ import { INFO, MACHINES } from '../data/machines';
 import { BOSS, DIRS, PROD, RES, RULES } from '../data/rules';
 import { STORY } from '../data/story';
 import { BTN_BRASS, BTN_GO, makeButton } from '../draw';
-import { META, clearRun, newRun, saveMeta, state } from '../state';
+import { META, clearRun, loadRun, newRun, saveMeta, saveRun, starsFor, state } from '../state';
 import { C, COLS, D, FONT, ROWS } from '../theme';
 
 // Build sahnesinin bir parçası: yöntemler sahneye eklenir (bkz. scene/Build.ts)
@@ -59,7 +59,7 @@ export class FlowPart {
         this.setBanner('Makineler çalıştıkça ısınır', 'Alttaki çubuk ısıyı gösterir. Dolunca ! çıkar: dokun, mini oyunla soğut. Tamamen ısınan makine durur.', 0xffc23d);
       } else {
         this.banner.setVisible(false);
-        state.tutorialDone = true;
+        state.tutorialDone = true; META.tutorialDone = true; saveMeta();
       }
     }
   }
@@ -94,7 +94,7 @@ export class FlowPart {
       state.heat[i] = Math.max(state.heat[i] || 0, Phaser.Math.FloatBetween(0, 0.25));
     });
     state.joltT = BOSS[state.round] && BOSS[state.round].jolt;
-    if (BOSS[state.round]) this.flashTip('☠ Patron turu: ' + BOSS[state.round].name, BOSS[state.round].desc, 0xe0564a, 3500);
+    if (BOSS[state.round]) this.flashTip('☠ Patron leveli: ' + BOSS[state.round].name, BOSS[state.round].desc, 0xe0564a, 3500);
     beep(392, 0.12, 'triangle', 0.2); setTimeout(() => beep(523, 0.12, 'triangle', 0.2), 110); setTimeout(() => beep(784, 0.2, 'triangle', 0.2), 220);
     buzz(30);
     this.refreshPhase();
@@ -117,11 +117,19 @@ export class FlowPart {
     state.pressure = this.computePressure();
     const delta = Math.round(state.pressure - before);
     state.phase = 'end';
-    state.result = { won, spark: state.res.spark, goal, bonus, delta, last: state.round === RULES.goals.length - 1 };
+    state.result = { won, spark: state.res.spark, goal, bonus, delta, round: state.round, last: state.round === RULES.goals.length - 1 };
     if (state.pressure >= 100) { this.explode(); return; }
-    if (state.result.last) state.result.scrap = this.awardScrap(RULES.goals.length, won);
+    if (won) {
+      // level geçildi: yıldız, hurda ve kumbara
+      const R = state.result, n = state.round;
+      R.stars = starsFor(state.time);
+      META.stars[n] = Math.max(META.stars[n] || 0, R.stars);
+      R.scrap = this.awardScrap(R.stars, !!BOSS[n]);
+      R.piggy = META.lv.money; state.res.money += R.piggy;
+      saveMeta();
+    }
     this.refreshPhase();
-    if (state.result.last) this.showDialog(STORY.win, () => this.showResult());
+    if (state.result.last && won) this.showDialog(STORY.win, () => this.showResult());
     else this.showResult();
     if (won) { [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => beep(f, 0.14, 'triangle', 0.2), i * 100)); buzz([20, 40, 20]); }
     else { beep(220, 0.3, 'sawtooth', 0.15); setTimeout(() => beep(150, 0.4, 'sawtooth', 0.15), 200); buzz(120); }
@@ -138,7 +146,6 @@ export class FlowPart {
     this.cells.forEach(v => { if (v) this.setAlert(v, null); });
     this.banner.setVisible(false); this.infoUntil = 0;
     state.result = Object.assign(state.result || {}, { boom: true, round: state.round });
-    state.result.scrap = this.awardScrap(state.round, false);
     this.updateHud(true);
     this.refreshPhase();
     const W = this.W, H = this.H;
@@ -182,80 +189,84 @@ export class FlowPart {
   }
 
   showResult() {
+    if (this.resultBox) this.resultBox.destroy();
     const W = this.W, H = this.H, R = state.result;
     const k = this.add.container(0, 0).setDepth(100);
     const dim = this.add.rectangle(0, 0, W, H, 0x05070d, 0.72).setOrigin(0).setInteractive();
-    const cw = Math.min(W - this.pad * 2, 360 * D), ch = cw * 0.82;
+    const cw = Math.min(W - this.pad * 2, 360 * D), ch = cw * 1.02;
     const cx = W / 2, cy = H * 0.45;
     const good = R.won && !R.boom;
     const g = this.add.graphics();
     g.fillStyle(C.copperDark, 1).fillRoundedRect(cx - cw / 2, cy - ch / 2 + 6 * D, cw, ch, 22 * D);
     g.fillStyle(0x1d2540, 1).fillRoundedRect(cx - cw / 2, cy - ch / 2, cw, ch, 22 * D);
     g.lineStyle(3 * D, good ? 0x5fd38a : R.boom ? 0xff8a3c : 0xe0564a, 1).strokeRoundedRect(cx - cw / 2, cy - ch / 2, cw, ch, 22 * D);
-    let title, big, sub, label, style;
-    if (R.boom) {
-      title = 'FABRİKA PATLADI!';
-      big = `Tur ${R.round + 1} / ${RULES.goals.length}`;
-      sub = R.round === 0 ? 'Bir türün bütün makineleri kızınca basınç %100 olur.\nIsınanları mini oyunla soğut, Fan 2×2 alanı korur.' : `Bölüm ${this.chapter(R.round) + 1}, ${R.round} tur dayandın. Bir dahakine daha uzun!`;
-      sub += `\n+${R.scrap} 🔩 hurda kazandın`;
-      label = 'Atölyeye git'; style = BTN_BRASS;
-    } else if (R.last) {
-      title = R.won ? 'Fabrika ayakta!' : 'Zor da olsa ayakta!';
-      big = `✦ ${R.spark} / ${R.goal}`;
-      sub = `${RULES.chapters.length} bölümün ${RULES.goals.length} turunu patlamadan bitirdin.\nSon basınç: %${Math.round(state.pressure)}`;
-      sub += `\n+${R.scrap} 🔩 hurda kazandın`;
-      label = 'Atölyeye git'; style = BTN_GO;
+    const n = R.round + 1;
+    let title, big, sub, label, style, action;
+    if (R.boom || !R.won) {
+      title = R.boom ? 'FABRİKA PATLADI!' : 'Hedef tutmadı';
+      big = R.boom ? `Level ${n}` : `✦ ${R.spark} / ${R.goal}`;
+      sub = R.boom && R.round === 0 ? 'Bir türün bütün makineleri kızınca basınç %100 olur.\nIsınanları mini oyunla soğut, Fan 2×2 alanı korur.'
+        : `Level ${n} tekrar oynanacak.\nFabrika bu levele girerkenki haline döner.`;
+      label = '↻  Tekrar dene'; style = BTN_GO; action = 'retry';
     } else {
-      title = R.won ? 'Hedef tuttu!' : 'Hedef tutmadı';
-      big = `✦ ${R.spark} / ${R.goal}`;
-      const p = R.delta > 0 ? `Basınç +%${R.delta}  ▲` : R.delta < 0 ? `Basınç %${-R.delta} azaldı  ▼` : '';
-      sub = (R.bonus ? `Erken bitirme bonusu: +${R.bonus} 💎\n` : '') + (p ? p + '\n' : '') + (BOSS[state.round + 1] ? `Sonraki: ☠ Patron turu (✦ ${RULES.goals[state.round + 1]})` : `Sonraki hedef: ✦ ${RULES.goals[state.round + 1]}  ·  +${RULES.placesPerRound} hak`);
-      label = 'Sonraki tur  ▶'; style = R.won ? BTN_GO : BTN_BRASS;
+      title = R.last ? 'Bütün leveller bitti!' : `Level ${n} geçildi!`;
+      big = '★'.repeat(R.stars) + '☆'.repeat(3 - R.stars);
+      const extra = [];
+      if (R.bonus) extra.push(`Erken bitirme: +${R.bonus} 💎`);
+      if (R.piggy) extra.push(`Kumbara: +${R.piggy} 💎`);
+      extra.push(`+${R.scrap} 🔩 hurda`);
+      sub = extra.join('   ') + '\n' + (R.last ? 'Festival fenerleri senin sayende yanıyor!' : (BOSS[R.round + 1] ? `Sonraki: ☠ Patron leveli (✦ ${RULES.goals[R.round + 1]})` : `Sonraki: Level ${n + 1} (✦ ${RULES.goals[R.round + 1]})  ·  +${RULES.placesPerRound} hak`));
+      label = R.last ? 'Haritaya dön' : 'Dükkana git  ▶'; style = BTN_GO; action = R.last ? 'map' : 'next';
     }
-    const t1 = this.add.text(cx, cy - ch * 0.32, title, { fontFamily: FONT, fontSize: Math.round(cw * (R.boom ? 0.088 : 0.1)) + 'px', fontStyle: '700', color: good ? '#7fe3a5' : R.boom ? '#ffb36b' : '#ff8a7c' }).setOrigin(0.5);
-    const t2 = this.add.text(cx, cy - ch * 0.13, big, { fontFamily: FONT, fontSize: Math.round(cw * 0.08) + 'px', fontStyle: '700', color: '#ffd84a' }).setOrigin(0.5);
-    const t3 = this.add.text(cx, cy + ch * 0.1, sub, { fontFamily: FONT, fontSize: Math.round(cw * 0.045) + 'px', fontStyle: '500', color: C.dim, align: 'center', lineSpacing: 4 * D }).setOrigin(0.5);
-    const btn = makeButton(this, cx, cy + ch * 0.37, cw * 0.7, Math.min(ch * 0.19, 56 * D), label, style, () => this.afterResult());
+    const t1 = this.add.text(cx, cy - ch * 0.36, title, { fontFamily: FONT, fontSize: Math.round(cw * (R.boom ? 0.088 : 0.09)) + 'px', fontStyle: '700', color: good ? '#7fe3a5' : R.boom ? '#ffb36b' : '#ff8a7c' }).setOrigin(0.5);
+    const t2 = this.add.text(cx, cy - ch * 0.2, big, { fontFamily: FONT, fontSize: Math.round(cw * (good ? 0.12 : 0.08)) + 'px', fontStyle: '700', color: '#ffd84a' }).setOrigin(0.5);
+    const t3 = this.add.text(cx, cy - ch * 0.01, sub, { fontFamily: FONT, fontSize: Math.round(cw * 0.042) + 'px', fontStyle: '500', color: C.dim, align: 'center', lineSpacing: 4 * D, wordWrap: { width: cw - 28 * D } }).setOrigin(0.5);
+    const bh = Math.min(ch * 0.16, 52 * D);
+    const btn = makeButton(this, cx, cy + ch * 0.2, cw * 0.72, bh, label, style, () => this.afterResult(action));
     k.add([dim, g, t1, t2, t3, btn]);
+    if (action !== 'map') k.add(makeButton(this, cx, cy + ch * 0.2 + bh * 1.2, cw * 0.5, bh * 0.8, '⌂  Harita', BTN_BRASS, () => this.afterResult('map')));
     k.setAlpha(0); this.tweens.add({ targets: k, alpha: 1, duration: 200 });
     this.resultBox = k;
   }
 
-  afterResult() {
+  // sonuç ekranından: 'next' sonraki level (önce dükkan), 'retry' aynı level, 'map' harita
+  afterResult(action = 'next') {
     const R = state.result;
-    if (!R.boom && !R.last) {
-      state.round++;
-      if (state.round % RULES.roundsPer === 0) { META.maxCh = Math.max(META.maxCh || 0, Math.min(RULES.chapters.length - 1, state.round / RULES.roundsPer)); saveMeta(); }
-      state.phase = 'build';
-      state.places += RULES.placesPerRound;
-      state.res.spark = 0;
-      state.res.energy = 0;
-      state.time = RULES.roundTime;
-      state.result = null;
-      this.resultBox.destroy();
-      state.offers = null; state.rerolls = 0; state.shopOpen = true;
-      this.refreshPhase();
-      // bölüm geçişi ve patron turu öncesi Nuri Usta konuşur, sonra dükkan açılır
-      const lines = [];
-      // önce az önceki tura tepki
-      if (!R.won) lines.push('Hedefi tutturamadık ama dert etme evlat, olur böyle şeyler. Makineler biraz kızdı, bir dahakine!');
-      else if (R.bonus >= 5) lines.push(`Erken bitirdin, aferin! Kasaya ${R.bonus} 💎 bonus ekledim.`);
-      else if (state.pressure >= 60) lines.push('Hedef tuttu ama fabrika kaynıyor! Dükkandan sonra Soğut düğmesine bir bak.');
-      if (STORY.rounds[state.round]) lines.push(...STORY.rounds[state.round]);
-      if (state.round % RULES.roundsPer === 0 && STORY.chapter[this.chapter()]) lines.push(...STORY.chapter[this.chapter()]);
-      if (BOSS[state.round]) lines.push(...BOSS[state.round].lines);
-      if (lines.length) { state.shopOpen = false; this.showDialog(lines, () => { state.shopOpen = true; this.openShop(); }); }
-      else this.openShop();
-      if (state.pressure >= 30 && !state.ventTaught) {
-        state.ventTaught = true;
-        this.flashTip('Fabrika sıcak mı? Soğut!', `Mavi ❄ Soğut düğmesi ${RULES.ventCost} 💎 karşılığında tüm makinelerin ısısını %${Math.round(RULES.ventCool * 100)} düşürür.`, 0x8fb4ff, 6000);
-      }
-    } else {
-      newRun();
-      clearRun();
-      state.showMeta = true;
-      this.boomed = false;
+    if (this.resultBox) { this.resultBox.destroy(); this.resultBox = null; }
+    this.boomed = false;
+    const passed = R && R.won && !R.boom;
+    if (!passed) {
+      // kaybedince: fabrika levelin başındaki haline döner
+      if (!loadRun()) { newRun(); }
+      state.retry = action === 'retry';
+      if (action === 'map') state.screen = 'map';
       this.scene.restart();
+      return;
+    }
+    if (R.last) { clearRun(); newRun(); state.screen = 'map'; this.scene.restart(); return; }
+    state.round++;
+    state.phase = 'build';
+    state.places += RULES.placesPerRound;
+    state.res.spark = 0;
+    state.res.energy = 0;
+    state.time = RULES.roundTime;
+    state.result = null;
+    state.offers = null; state.rerolls = 0; state.shopOpen = true;
+    saveRun();   // yeni levelin başlangıç kaydı
+    if (action === 'map') { state.screen = 'map'; this.scene.restart(); return; }
+    this.refreshPhase();
+    // Nuri Usta önce az önceki levele tepki verir, hikâyeyi anlatır, sonra dükkan açılır
+    const lines = [];
+    if (R.bonus >= 5) lines.push(`Erken bitirdin, aferin! Kasaya ${R.bonus} 💎 bonus ekledim.`);
+    else if (state.pressure >= 60) lines.push('Hedef tuttu ama fabrika kaynıyor! Dükkandan sonra Soğut düğmesine bir bak.');
+    if (STORY.rounds[state.round]) lines.push(...STORY.rounds[state.round]);
+    if (state.round % RULES.roundsPer === 0 && STORY.chapter[this.chapter()]) lines.push(...STORY.chapter[this.chapter()]);
+    if (BOSS[state.round]) lines.push(...BOSS[state.round].lines);
+    if (lines.length) { state.shopOpen = false; this.showDialog(lines, () => { state.shopOpen = true; this.openShop(); }); }
+    else this.openShop();
+    if (state.pressure >= 30 && !state.ventTaught) {
+      state.ventTaught = true;
+      this.flashTip('Fabrika sıcak mı? Soğut!', `Mavi ❄ Soğut düğmesi ${RULES.ventCost} 💎 karşılığında tüm makinelerin ısısını %${Math.round(RULES.ventCool * 100)} düşürür.`, 0x8fb4ff, 6000);
     }
   }
 

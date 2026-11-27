@@ -1,17 +1,17 @@
 // ---------- oyun kuralları (denge için tek yer) ----------
 export const RULES = {
   roundTime: 60,                       // saniye
-  goals: [15, 25, 40, 55, 75, 100, 130, 160, 190, 225, 260, 300], // 12 tur hedefi (✦): 3 bölüm x 4 tur
-  roundsPer: 4,                        // bölüm başına tur
+  goals: [12, 22, 35, 50, 70, 90, 115, 140, 170, 200, 235, 270], // 12 level hedefi (✦): 3 bölüm x 4 level, her level tek tur
+  roundsPer: 4,                        // bölüm başına level
+  stars: [20, 8],                      // hedef tutunca kalan süre: >=20 sn 3★, >=8 sn 2★, yoksa 1★
   chapters: [                          // bölüm zorluğu: ısınma çarpanı ve patlama geri sayımı
     { name: 'Atölye', heat: 0.7, boom: 5 },
     { name: 'Şehir Siparişi', heat: 0.9, boom: 4 },
     { name: 'Fenerler Festivali', heat: 1.0, boom: 3 },
   ],
-  startPlaces: 3,                      // 1. turda yerleştirme hakkı
-  placesPerRound: 2,                   // sonraki turlarda eklenen hak
+  startPlaces: 3,                      // 1. levelde yerleştirme hakkı
+  placesPerRound: 2,                   // her yeni levelde eklenen hak
   startMoney: 10,
-  chapterKit: [0, 15, 30],             // bölüm 2/3'ten başlayınca verilen ek 💎 (kaçırılan turların yerine)
   heatRate: { crank: 0.045, press: 0.04, mint: 0.035, fan: 0.03 }, // saniyede ısınma (0-1)
   idleHeat: 0.4,                       // çalışamayan makine bu oranda ısınır
   fanCool: 0.5,                        // Fan'ın 2x2 alanındaki makineler yarı hızda ısınır
@@ -47,12 +47,12 @@ export const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]];  // 0 yukarı, 1 sağ, 2
 export const DEFAULT_ROT = { crank: 1, press: 0, mint: 0, fan: 0 };
 // patron turları (her bölümün son turu)
 export const BOSS = {
-  3:  { name: 'Sıcak Hava Dalgası', desc: 'Bu turda makineler %40 hızlı ısınır.', heat: 1.4,
-        lines: ['Eyvah, sıcak hava dalgası geliyor! Bu vardiya bütün makineler %40 daha hızlı ısınacak.', 'Fan ve Yalıtım Plakası tam bugünlük. Hazırlan!'] },
+  3:  { name: 'Sıcak Hava Dalgası', desc: 'Bu levelde makineler %40 hızlı ısınır.', heat: 1.4,
+        lines: ['Eyvah, sıcak hava dalgası geliyor! Bu levelde bütün makineler %40 daha hızlı ısınacak.', 'Fan ve Yalıtım Plakası tam bugünlük. Hazırlan!'] },
   7:  { name: 'Gevşek Vidalar', desc: 'Her 10 saniyede bir makine aniden ısınır.', jolt: 10, joltAmt: 0.35,
-        lines: ['Bu makinelerin vidaları gevşemiş... Bu vardiya ara ara bir makine aniden ısınacak.', 'Gözünü dört aç, kırmızı parlayanı hemen soğut!'] },
+        lines: ['Bu makinelerin vidaları gevşemiş... Bu levelde ara ara bir makine aniden ısınacak.', 'Gözünü dört aç, kırmızı parlayanı hemen soğut!'] },
   11: { name: 'Final: Sıcak ve Gevşek', desc: '%25 hızlı ısınma ve her 12 saniyede ani ısınma.', heat: 1.25, jolt: 12, joltAmt: 0.3,
-        lines: ['Final vardiyası evlat! Hem hava sıcak hem vidalar gevşek.', 'Bunu da atlatırsak festivalin bütün fenerleri bizden. Haydi!'] },
+        lines: ['Final leveli evlat! Hem hava sıcak hem vidalar gevşek.', 'Bunu da atlatırsak festivalin bütün fenerleri bizden. Haydi!'] },
 };
 export const GRADES = {
   perfect: { label: 'MÜKEMMEL!', color: '#7fe3a5', mult: 2,   secs: 6 },

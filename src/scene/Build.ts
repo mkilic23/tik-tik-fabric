@@ -4,7 +4,7 @@ import { INFO, MACHINES, ORDER } from '../data/machines';
 import { BOSS, PROD, RULES } from '../data/rules';
 import { STORY } from '../data/story';
 import { BTN_GO, drawMachine, makeButton, rivet } from '../draw';
-import { saveRun, state } from '../state';
+import { META, saveMeta, saveRun, state } from '../state';
 import { C, COLS, D, FONT, ROWS, T, THEMES } from '../theme';
 import { ShopPart } from './shop';
 import { MetaPart } from './meta';
@@ -13,6 +13,7 @@ import { PlacementPart } from './placement';
 import { HeatPart } from './heat';
 import { DialogPart } from './dialog';
 import { MinigamePart } from './minigames';
+import { MapPart } from './map';
 
 export class Build extends Phaser.Scene {
   [key: string]: any;
@@ -22,7 +23,7 @@ export class Build extends Phaser.Scene {
   create() {
     const W = this.scale.width, H = this.scale.height;
     this.W = W; this.H = H;
-    this.dialog = null; this.mg = null; this.shop = null; this.meta = null; this.pickMod = null; this.lastP = undefined; // sahne yeniden başlarken eski durum kalmasın
+    this.dialog = null; this.mg = null; this.shop = null; this.meta = null; this.map = null; this.resultBox = null; this.boomed = false; this.pickMod = null; this.lastP = undefined; // sahne yeniden başlarken eski durum kalmasın
 
     const pad = 16 * D;
     this.pad = pad;
@@ -125,16 +126,25 @@ export class Build extends Phaser.Scene {
     this.countText = this.add.text(W / 2, this.gy + this.cell * ROWS / 2, '', { fontFamily: FONT, fontSize: Math.round(this.cell * 0.9) + 'px', fontStyle: '700', color: '#ffe3a8', stroke: '#7a1a12', strokeThickness: 8 * D }).setOrigin(0.5).setDepth(110).setVisible(false);
 
     this.refreshPhase();
-    if (state.phase === 'end' || state.phase === 'boom') this.showResult();
-    if (state.phase === 'build' && state.shopOpen && !state.chStart) this.openShop();
-    if (state.showMeta) this.openMeta();
-    else if (state.chStart) { const c = state.chStart; state.chStart = 0; this.showDialog([`Bölüm ${c + 1}'den başlıyoruz evlat! Kaçırdığın turlar için kasaya +${RULES.chapterKit[c]} 💎 koydum, fazladan yerleştirme hakkın da var. Önce dükkana bir bak.`], () => this.openShop()); }
-    else if (state.resumed) { state.resumed = false; this.flashTip('Kaldığın yerden devam', `Tur ${state.round + 1} başından devam ediyorsun.`, 0x5fd38a, 2500); }
-    else if (state.needIntro && state.phase === 'build' && state.round === 0) {
-      // ekran yeniden kurulursa (döndürme) konuşma baştan gösterilir; bitince bir daha çıkmaz
-      this.showDialog(state.seenIntro ? STORY.again : STORY.intro, () => { state.needIntro = false; state.seenIntro = true; });
-    }
+    if (state.screen === 'map') this.openMap();
+    else if (state.screen === 'meta') this.openMeta();
+    else this.enterLevel();
     (window as any).__scene = this; // test ve hata ayıklama için
+  }
+
+  // haritadan ya da yeniden kurulumdan sonra levele gir: sonuç, giriş konuşması ya da dükkan
+  enterLevel() {
+    if (state.phase === 'end' || state.phase === 'boom') { this.showResult(); return; }
+    const n = state.round + 1;
+    if (state.needIntro && state.round === 0) {
+      // ekran yeniden kurulursa (döndürme) konuşma baştan gösterilir; bitince bir daha çıkmaz
+      this.showDialog(META.seenIntro ? STORY.again : STORY.intro, () => { state.needIntro = false; META.seenIntro = true; saveMeta(); if (state.shopOpen) this.openShop(); });
+      return;
+    }
+    if (state.shopOpen) { this.openShop(); return; }
+    if (state.retry) this.flashTip(`Level ${n} tekrar`, `Fabrika bu levele girerkenki haline döndü. Hedef: ✦ ${RULES.goals[state.round]}`, 0x5fd38a, 3000);
+    else if (state.round > 0) this.flashTip(`Level ${n}`, `Hedef: ✦ ${RULES.goals[state.round]}. Hazırsan ▶ Başlat.`, 0x5fd38a, 2500);
+    state.retry = false;
   }
 
   toggleTheme() {
@@ -172,6 +182,15 @@ export class Build extends Phaser.Scene {
     tb.add(tg);
     tb.on('pointerup', () => this.toggleTheme());
     this.themeBtn = tb;
+    // harita düğmesi (sadece kurulumda)
+    const mb = this.add.container(tb.x + tr * 2.9, row1).setSize(tr * 3, tr * 3).setInteractive();
+    const mg = this.add.graphics();
+    mg.fillStyle(state.theme === 'dark' ? 0x2c3654 : 0x2b2340, 1).fillCircle(0, 0, tr);
+    mg.fillStyle(0xffe3a8, 1).fillTriangle(-tr * 0.55, -tr * 0.05, tr * 0.55, -tr * 0.05, 0, -tr * 0.6).fillRect(-tr * 0.38, -tr * 0.08, tr * 0.76, tr * 0.6);
+    mg.fillStyle(state.theme === 'dark' ? 0x2c3654 : 0x2b2340, 1).fillRect(-tr * 0.12, tr * 0.18, tr * 0.24, tr * 0.34);
+    mb.add(mg);
+    mb.on('pointerup', () => { if (state.phase === 'build' && !this.dialog && !this.pickMod) { sfx.tap(); this.openMap(); } });
+    this.mapBtn = mb;
     const fs = Math.round(Math.min(W * 0.042, 17 * D));
 
     // basınç: sağda içi dolan fabrika
@@ -211,7 +230,7 @@ export class Build extends Phaser.Scene {
 
   updateHud(force) {
     const r = state.res, goal = RULES.goals[state.round];
-    this.roundText.setText(`Bölüm ${this.chapter() + 1} · Tur ${state.round + 1}/${RULES.goals.length}${BOSS[state.round] ? ' ☠' : ''}`).setColor(BOSS[state.round] ? (state.theme === 'light' ? '#c0392b' : '#ff8a7c') : T.hud);
+    this.roundText.setText(`Bölüm ${this.chapter() + 1} · Level ${state.round + 1}${BOSS[state.round] ? ' ☠' : ''}`).setColor(BOSS[state.round] ? (state.theme === 'light' ? '#c0392b' : '#ff8a7c') : T.hud);
     const b = this.bar, g = this.barG, f = Math.min(1, r.spark / goal);
     g.clear();
     g.fillStyle(T.barBg, 1).fillRoundedRect(b.x, b.y, b.w, b.h, b.h / 2);
@@ -392,7 +411,7 @@ export class Build extends Phaser.Scene {
 
   // ---------- dokunma ----------
   onDown(p) {
-    if (this.dialog || this.shop || this.meta) return;
+    if (this.dialog || this.shop || this.meta || this.map) return;
     if (state.phase === 'end' || state.phase === 'boom') return;
     if (this.mg) { const f = this['mgDown_' + this.mg.type]; if (f) f.call(this, this.mg, p); return; }
     if (state.phase === 'build' && state.places > 0 && p.y > this.slotTop) {
@@ -432,7 +451,7 @@ export class Build extends Phaser.Scene {
   }
 
   onMove(p) {
-    if (this.dialog || this.shop || this.meta) return;
+    if (this.dialog || this.shop || this.meta || this.map) return;
     if (this.mg) { const f = this['mgMove_' + this.mg.type]; if (f) f.call(this, this.mg, p); return; }
     if (this.pending && !this.drag) {
       // makineler yalnızca inşa evresinde taşınır
@@ -461,7 +480,7 @@ export class Build extends Phaser.Scene {
   }
 
   onUp(p) {
-    if (this.dialog || this.shop || this.meta) return;
+    if (this.dialog || this.shop || this.meta || this.map) return;
     if (this.mg) { const f = this['mgUp_' + this.mg.type]; if (f) f.call(this, this.mg, p); return; }
     if (this.pending && !this.drag) {
       const i = this.pending.i, v = this.cells[i];
@@ -525,7 +544,7 @@ export class Build extends Phaser.Scene {
 }
 
 // parçaların yöntemlerini sahneye ekle
-for (const P of [ShopPart, MetaPart, FlowPart, PlacementPart, HeatPart, DialogPart, MinigamePart]) {
+for (const P of [MapPart, ShopPart, MetaPart, FlowPart, PlacementPart, HeatPart, DialogPart, MinigamePart]) {
   for (const n of Object.getOwnPropertyNames(P.prototype)) {
     if (n !== 'constructor') Object.defineProperty(Build.prototype, n, Object.getOwnPropertyDescriptor(P.prototype, n)!);
   }

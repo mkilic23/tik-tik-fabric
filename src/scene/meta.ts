@@ -2,7 +2,7 @@ import { beep, buzz, sfx } from '../audio';
 import { ENG, UPG } from '../data/progress';
 import { RULES } from '../data/rules';
 import { BTN_BRASS, BTN_GO, makeButton } from '../draw';
-import { META, clearRun, newRun, saveMeta, state } from '../state';
+import { META, saveMeta, saveRun, state } from '../state';
 import { C, D, FONT } from '../theme';
 
 // Build sahnesinin bir parçası: yöntemler sahneye eklenir (bkz. scene/Build.ts)
@@ -12,17 +12,17 @@ export class MetaPart {
   // =====================================================================
   // ATÖLYE: koşular arası kalıcı açılımlar
   // =====================================================================
-  awardScrap(rounds, won) {
-    const r0 = state.startRound || 0;   // ortadan başlanan koşuda sadece oynanan turlar sayılır
-    const s = (rounds - r0) * 2 + (Math.floor(rounds / RULES.roundsPer) - Math.floor(r0 / RULES.roundsPer)) * 5 + (won ? 10 : 0);
-    META.scrap += s; META.runs += 1; saveMeta(); clearRun();
+  // level geçilince hurda: 2 + yıldız, patron levelinde +5
+  awardScrap(stars, boss) {
+    const s = 2 + stars + (boss ? 5 : 0);
+    META.scrap += s; saveMeta();
     return s;
   }
   openMeta() {
     if (this.meta) this.meta.destroy();
     const W = this.W, H = this.H, pad = this.pad;
     const k = this.add.container(0, 0).setDepth(125);
-    const dim = this.add.rectangle(0, 0, W, H, 0x05070d, 0.92).setOrigin(0).setInteractive();
+    const dim = this.add.rectangle(0, 0, W, H, 0x121829, 1).setOrigin(0).setInteractive();
     const g = this.add.graphics();
     const fsT = Math.round(Math.min(W * 0.065, 27 * D)), fs = Math.round(Math.min(W * 0.036, 15 * D)), fsS = Math.round(fs * 0.85);
     let y = Math.max(24 * D, H * 0.04);
@@ -30,7 +30,7 @@ export class MetaPart {
     y += fsT * 1.35;
     const scrap = this.add.text(W / 2, y, `🔩 ${META.scrap} hurda`, { fontFamily: FONT, fontSize: Math.round(fsT * 0.75) + 'px', fontStyle: '700', color: '#c9d2ee' }).setOrigin(0.5, 0);
     y += fsT * 1.3;
-    const sub = this.add.text(W / 2, y, 'Hurdayla kalıcı yükseltmeler al. Her koşuda geçerli olur.', { fontFamily: FONT, fontSize: fsS + 'px', fontStyle: '500', color: C.dim, align: 'center', wordWrap: { width: W - pad * 2 } }).setOrigin(0.5, 0);
+    const sub = this.add.text(W / 2, y, 'Level geçtikçe hurda kazanırsın. Hurdayla kalıcı yükseltmeler al.', { fontFamily: FONT, fontSize: fsS + 'px', fontStyle: '500', color: C.dim, align: 'center', wordWrap: { width: W - pad * 2 } }).setOrigin(0.5, 0);
     y += sub.height + 16 * D;
     k.add([dim, g, title, scrap, sub]);
     // mühendisler
@@ -70,21 +70,8 @@ export class MetaPart {
       }
       y += rh + 6 * D;
     });
-    // başlangıç bölümü
-    y += 6 * D;
-    const h3 = this.add.text(pad, y, 'Başlangıç bölümü', { fontFamily: FONT, fontSize: fs + 'px', fontStyle: '700', color: '#ffe3a8' });
-    k.add(h3); y += h3.height + 8 * D;
-    const nC = RULES.chapters.length, cbw = (W - pad * 2 - gap * (nC - 1)) / nC, cbh = Math.min(40 * D, H * 0.052);
-    for (let c = 0; c < nC; c++) {
-      const x = pad + c * (cbw + gap) + cbw / 2, open = c <= (META.maxCh || 0), sel = c === Math.min(META.startCh || 0, META.maxCh || 0);
-      const label = open ? (sel ? `✓ Bölüm ${c + 1}` : `Bölüm ${c + 1}`) : `🔒 Bölüm ${c + 1}`;
-      const st = !open ? { base: 0x3a4466, dark: 0x252d47, text: '#8e97b8' } : sel ? BTN_GO : BTN_BRASS;
-      k.add(makeButton(this, x, y + cbh / 2, cbw, cbh, label, st, () => this.metaStart(c)));
-    }
-    y += cbh + 6 * D;
-    const note = this.add.text(W / 2, y, (META.maxCh || 0) > 0 ? 'Ulaştığın bölümden başlayabilirsin. Hurda sadece oynadığın turlardan gelir.' : 'Bir bölüme ulaşınca oradan başlayabilirsin.', { fontFamily: FONT, fontSize: fsS + 'px', fontStyle: '500', color: C.dim, align: 'center', wordWrap: { width: W - pad * 2 } }).setOrigin(0.5, 0);
-    k.add(note); y += note.height + 10 * D;
-    const go = makeButton(this, W / 2, Math.min(y + 28 * D, H - 40 * D), Math.min(W * 0.7, 300 * D), Math.min(56 * D, H * 0.07), '▶  Yeni koşu', BTN_GO, () => this.closeMeta());
+    y += 8 * D;
+    const go = makeButton(this, W / 2, Math.min(y + 28 * D, H - 40 * D), Math.min(W * 0.7, 300 * D), Math.min(56 * D, H * 0.07), '◀  Haritaya dön', BTN_GO, () => this.closeMeta());
     k.add(go);
     this.meta = k;
     this.banner.setVisible(false);
@@ -103,19 +90,16 @@ export class MetaPart {
     if (lv >= u.cost.length) return;
     if (META.scrap < u.cost[lv]) { this.cameras.main.shake(80, 0.004); sfx.bad(); return; }
     META.scrap -= u.cost[lv]; META.lv[key] = lv + 1; saveMeta();
+    if (key === 'place') { state.places += 1; saveRun(); }   // Fazla Tezgâh hemen işler
     [523, 659, 784].forEach((f, i) => setTimeout(() => beep(f, 0.1, 'triangle', 0.15), i * 70)); buzz(20);
     this.openMeta();
   }
-  metaStart(c) {
-    if (c > (META.maxCh || 0)) { this.cameras.main.shake(80, 0.004); sfx.bad(); return; }
-    META.startCh = c; saveMeta(); sfx.tap(); this.openMeta();
-  }
   closeMeta() {
     if (this.meta) { this.meta.destroy(); this.meta = null; }
-    newRun();                 // yükseltmeler yeni koşuya yansısın
-    state.showMeta = false;
+    state.eng = META.pick;    // seçilen mühendis hemen geçerli
+    saveRun();
     sfx.pick();
-    this.scene.restart();
+    this.openMap();
   }
 
 }

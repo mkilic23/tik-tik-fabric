@@ -46,47 +46,70 @@ export class ShopPart {
       g.fillStyle(0xffffff, 1).fillCircle(x, y, r * 0.14);
     }
   }
+  // dükkan: levellar arasında açılan tam ekran sayfa
   openShop() {
     if (this.shop) this.shop.destroy();
     if (!state.offers) this.rollOffers();
     const W = this.W, H = this.H, pad = this.pad;
     const k = this.add.container(0, 0).setDepth(120);
-    const dim = this.add.rectangle(0, 0, W, H, 0x05070d, 0.7).setOrigin(0).setInteractive();
-    const cw = W - pad * 2, gap = 10 * D;
-    const nc = state.offers.length, cardW = (cw - gap * (nc - 1)) / nc, cardH = Math.min(cardW * 1.95, H * 0.4);
-    const top = Math.max(this.topH * 0.5, H * 0.5 - cardH / 2 - 90 * D);
+    const bg = this.add.graphics();
+    bg.fillGradientStyle(0x2a2238, 0x2a2238, 0x121829, 0x121829, 1).fillRect(0, 0, W, H);
+    // raf çizgileri (dükkan havası)
+    bg.lineStyle(2 * D, 0x3a2f4a, 1);
+    for (let yy = H * 0.3; yy < H; yy += 64 * D) bg.lineBetween(0, yy, W, yy);
+    const blocker = this.add.rectangle(0, 0, W, H, 0, 0).setOrigin(0).setInteractive();
     const g = this.add.graphics();
-    const fsT = Math.round(Math.min(W * 0.06, 25 * D)), fs = Math.round(Math.min(W * 0.034, 14 * D));
-    const title = this.add.text(W / 2, top, 'Nuri Usta\'nın Dükkanı', { fontFamily: FONT, fontSize: fsT + 'px', fontStyle: '700', color: '#f0a76a' }).setOrigin(0.5, 0);
-    const money = this.add.text(W / 2, top + fsT * 1.35, `Paran: 💎 ${state.res.money}`, { fontFamily: FONT, fontSize: Math.round(fsT * 0.7) + 'px', fontStyle: '700', color: RES.money.color }).setOrigin(0.5, 0);
-    k.add([dim, g, title, money]);
-    const cy0 = top + fsT * 2.6;
-    state.offers.forEach((o, n) => {
-      const it = SHOP[o.key], x = pad + n * (cardW + gap);
-      g.fillStyle(0x000000, 0.35).fillRoundedRect(x, cy0 + 5 * D, cardW, cardH, 16 * D);
-      g.fillStyle(o.sold ? 0x161c2e : 0x232c4a, 1).fillRoundedRect(x, cy0, cardW, cardH, 16 * D);
-      g.lineStyle(2 * D, o.sold ? 0x2c3654 : it.color, 1).strokeRoundedRect(x, cy0, cardW, cardH, 16 * D);
+    k.add([bg, blocker, g]);
+    const fsT = Math.round(Math.min(W * 0.068, 28 * D)), fs = Math.round(Math.min(W * 0.04, 16 * D)), fsS = Math.round(fs * 0.86);
+    let y = Math.max(22 * D, H * 0.035);
+    // Nuri Usta ve başlık
+    const os = Math.min(W * 0.18, 76 * D);
+    const og = this.add.graphics();
+    this.drawOwner(og, pad + os * 0.5, y + os * 0.5, os * 0.8);
+    k.add(og);
+    const tx = pad + os * 1.15;
+    k.add(this.add.text(tx, y + os * 0.1, 'Nuri Usta\'nın Dükkanı', { fontFamily: FONT, fontSize: fsT + 'px', fontStyle: '700', color: '#f0a76a' }));
+    const next = state.round + 1;
+    k.add(this.add.text(tx, y + os * 0.1 + fsT * 1.3, `Level ${next} öncesi alışveriş · Hedef ✦ ${RULES.goals[state.round]}`, { fontFamily: FONT, fontSize: fsS + 'px', fontStyle: '500', color: C.dim, wordWrap: { width: W - tx - pad } }));
+    y += os * 1.6;
+    // para ve haklar
+    const chipH = Math.max(34 * D, fs * 2.1);
+    g.fillStyle(0x0b0f1c, 0.6).fillRoundedRect(pad, y, W - pad * 2, chipH, chipH / 2);
+    k.add(this.add.text(pad + 16 * D, y + chipH / 2, `💎 ${state.res.money}`, { fontFamily: FONT, fontSize: Math.round(fs * 1.15) + 'px', fontStyle: '700', color: '#7fd47a' }).setOrigin(0, 0.5));
+    k.add(this.add.text(W - pad - 16 * D, y + chipH / 2, `Yerleştirme hakkı: ${state.places}`, { fontFamily: FONT, fontSize: fsS + 'px', fontStyle: '700', color: '#c9d2ee' }).setOrigin(1, 0.5));
+    y += chipH + 14 * D;
+    // teklifler: alt alta geniş kartlar
+    const n = state.offers.length, bottomH = Math.min(130 * D, H * 0.19);
+    const gap = 10 * D, cardH = Math.min(118 * D, (H - y - bottomH - gap * (n - 1)) / n), cw = W - pad * 2;
+    state.offers.forEach((o, i) => {
+      const it = SHOP[o.key], cy = y + i * (cardH + gap);
+      g.fillStyle(0x000000, 0.35).fillRoundedRect(pad, cy + 4 * D, cw, cardH, 16 * D);
+      g.fillStyle(o.sold ? 0x161c2e : 0x232c4a, 1).fillRoundedRect(pad, cy, cw, cardH, 16 * D);
+      g.lineStyle(2 * D, o.sold ? 0x2c3654 : it.color, 1).strokeRoundedRect(pad, cy, cw, cardH, 16 * D);
+      const ir = Math.min(cardH * 0.3, 30 * D);
       const ig = this.add.graphics().setAlpha(o.sold ? 0.3 : 1);
-      this.drawShopIcon(ig, o.key, x + cardW / 2, cy0 + cardH * 0.2, cardW * 0.22);
-      const name = this.add.text(x + cardW / 2, cy0 + cardH * 0.37, it.name, { fontFamily: FONT, fontSize: fs + 'px', fontStyle: '700', color: C.cream, align: 'center', wordWrap: { width: cardW - 12 * D } }).setOrigin(0.5, 0).setAlpha(o.sold ? 0.4 : 1);
-      const desc = this.add.text(x + cardW / 2, name.y + name.height + 4 * D, it.desc, { fontFamily: FONT, fontSize: Math.round(fs * 0.86) + 'px', fontStyle: '500', color: C.dim, align: 'center', wordWrap: { width: cardW - 14 * D }, lineSpacing: 1 * D }).setOrigin(0.5, 0).setAlpha(o.sold ? 0.4 : 1);
+      this.drawShopIcon(ig, o.key, pad + 14 * D + ir, cy + cardH / 2, ir);
+      const bw = Math.min(100 * D, cw * 0.27), bx = pad + cw - 12 * D - bw / 2;
+      const txL = pad + 28 * D + ir * 2, txW = bx - bw / 2 - 10 * D - txL;
+      const name = this.add.text(txL, cy + cardH * 0.18, it.name, { fontFamily: FONT, fontSize: fs + 'px', fontStyle: '700', color: o.sold ? '#6c7594' : C.cream, wordWrap: { width: txW } });
+      const desc = this.add.text(txL, name.y + name.height + 3 * D, it.desc, { fontFamily: FONT, fontSize: fsS + 'px', fontStyle: '500', color: C.dim, wordWrap: { width: txW } });
       k.add([ig, name, desc]);
-      const bh = Math.min(38 * D, cardH * 0.15);
-      if (o.sold) {
-        k.add(this.add.text(x + cardW / 2, cy0 + cardH - bh * 0.8, 'Alındı ✓', { fontFamily: FONT, fontSize: fs + 'px', fontStyle: '700', color: '#7fe3a5' }).setOrigin(0.5));
-      } else {
+      const bh = Math.min(42 * D, cardH * 0.5);
+      if (o.sold) k.add(this.add.text(bx, cy + cardH / 2, 'Alındı ✓', { fontFamily: FONT, fontSize: fs + 'px', fontStyle: '700', color: '#7fe3a5' }).setOrigin(0.5));
+      else {
         const can = state.res.money >= this.price(o.key);
-        const b = makeButton(this, x + cardW / 2, cy0 + cardH - bh * 0.8, cardW - 16 * D, bh, `${this.price(o.key)} 💎`, can ? BTN_GO : { base: 0x3a4466, dark: 0x252d47, text: '#8e97b8' }, () => this.buy(n));
-        k.add(b);
+        k.add(makeButton(this, bx, cy + cardH / 2, bw, bh, `${this.price(o.key)} 💎`, can ? BTN_GO : { base: 0x3a4466, dark: 0x252d47, text: '#8e97b8' }, () => this.buy(i)));
       }
     });
-    const by = cy0 + cardH + 34 * D, bw = (cw - gap) / 2, bh = Math.min(48 * D, H * 0.065);
+    // alt: yenile ve fabrikaya dön
+    const by = H - bottomH + 16 * D, bw2 = (W - pad * 2 - gap) / 2, bh2 = Math.min(52 * D, bottomH * 0.4);
     const rc = RULES.rerollCost + (state.rerolls || 0);
-    const rb = makeButton(this, pad + bw / 2, by, bw, bh, `↻ Yenile ${rc}💎`, { base: 0x8fb4ff, dark: 0x3e62b0, text: '#0d1a33' }, () => this.reroll());
+    const rb = makeButton(this, pad + bw2 / 2, by + bh2 / 2, bw2, bh2, `↻ Yenile ${rc}💎`, { base: 0x8fb4ff, dark: 0x3e62b0, text: '#0d1a33' }, () => this.reroll());
     rb.setAlpha(state.res.money >= rc ? 1 : 0.5);
-    const cb = makeButton(this, W - pad - bw / 2, by, bw, bh, 'Devam  ▶', BTN_BRASS, () => this.closeShop());
-    const inv = this.add.text(W / 2, by + bh * 0.9, 'Modülü aldıktan sonra takacağın makineye dokun.', { fontFamily: FONT, fontSize: Math.round(fs * 0.9) + 'px', fontStyle: '500', color: C.dim, align: 'center', wordWrap: { width: cw } }).setOrigin(0.5, 0);
+    const cb = makeButton(this, W - pad - bw2 / 2, by + bh2 / 2, bw2, bh2, 'Fabrikaya  ▶', BTN_BRASS, () => this.closeShop());
+    const inv = this.add.text(W / 2, by + bh2 + 10 * D, 'Modül alınca fabrikaya geçersin: takacağın makineye dokun.', { fontFamily: FONT, fontSize: Math.round(fsS * 0.92) + 'px', fontStyle: '500', color: C.dim, align: 'center', wordWrap: { width: W - pad * 2 } }).setOrigin(0.5, 0);
     k.add([rb, cb, inv]);
+    k.setAlpha(0); this.tweens.add({ targets: k, alpha: 1, duration: 160 });
     this.shop = k;
     this.banner.setVisible(false);
   }

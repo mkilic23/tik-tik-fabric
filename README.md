@@ -28,7 +28,8 @@ npm run build    # dist/index.html: tek dosya, her yerde çalışır
 | `src/audio.ts` | Ses efektleri, titreşim, ritimli müzik |
 | `src/draw.ts` | Makine çizimleri ve düğmeler |
 | `src/scene/Build.ts` | Ana sahne: kurulum, üst bilgi, döngü, dokunma |
-| `src/scene/shop.ts` | Dükkan ve modüller |
+| `src/scene/map.ts` | Level haritası (ana ekran), yeni fabrika |
+| `src/scene/shop.ts` | Dükkan sayfası ve modüller |
 | `src/scene/meta.ts` | Nuri Usta'nın Atölyesi (koşular arası) |
 | `src/scene/flow.ts` | Tur akışı, öğretici, patlama, sonuç ekranı, üretim |
 | `src/scene/placement.ts` | Yönler, bağlantılar, Fan alanı |

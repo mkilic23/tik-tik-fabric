@@ -1,6 +1,6 @@
 export const UPG = {
-  money:  { name: 'Kumbara',       desc: 'Başlangıç parası +3 💎',          cost: [8, 14, 20] },
-  place:  { name: 'Fazla Tezgâh',  desc: 'Başlangıçta +1 yerleştirme hakkı', cost: [12, 24] },
+  money:  { name: 'Kumbara',       desc: 'Geçilen her levelde +1 💎',        cost: [8, 14, 20] },
+  place:  { name: 'Fazla Tezgâh',  desc: 'Hemen +1 yerleştirme hakkı',       cost: [12, 24] },
   shield: { name: 'Sigorta',       desc: 'Patlama geri sayımı +2 saniye',    cost: [15] },
   offer:  { name: 'Geniş Vitrin',  desc: 'Dükkanda 4. teklif',               cost: [20] },
 };
