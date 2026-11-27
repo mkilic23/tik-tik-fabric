@@ -45,6 +45,18 @@ const C = {
   glass: 0x0d1220, spark: 0xffd84a,
   cream: '#f6ecdb', dim: '#8e97b8', faint: '#4a5272',
 };
+// tema: makineler aynı kalır; zemin, ızgara, tepsi ve üst bilgi değişir
+const THEMES = {
+  dark:  { bgTop: 0x1a2340, bgBot: 0x0e1322, line: 0xffffff, lineA: 0.03, well: 0x0b0f1c, frame: 0x6e3518, frameW: 3,
+           cell: 0x1c2440, cellHi: 0x2a3456, cellLo: 0x121829, cellLine: 0, panel: 0x1b2238, panelHi: 0x2c3654,
+           hud: '#f6ecdb', hudDim: '#8e97b8', energy: '#4fd6e0', money: '#7fd47a', barBg: 0x0b0f1c, barLine: 0x2c3654, barText: '#ffd84a', facLine: 0x6e7aa3 },
+  light: { bgTop: 0xfff4e0, bgBot: 0xffe3c7, line: 0x2b2340, lineA: 0.05, well: 0xf3d9bd, frame: 0x2b2340, frameW: 3,
+           cell: 0xfff9ef, cellHi: 0xffffff, cellLo: 0xe8cfb3, cellLine: 0x2b2340, panel: 0xfff9ef, panelHi: 0x2b2340,
+           hud: '#2b2340', hudDim: '#6b5f80', energy: '#1f8a93', money: '#2e8a52', barBg: 0xffffff, barLine: 0x2b2340, barText: '#2b2340', facLine: 0x2b2340 },
+};
+let savedTheme = 'dark';
+try { savedTheme = localStorage.getItem('tiktik-theme') === 'light' ? 'light' : 'dark'; } catch (e) {}
+const T = Object.assign({}, THEMES[savedTheme]);
 const FONT = '"Fredoka", system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
 
 const MACHINES = {
@@ -71,7 +83,7 @@ const INFO = {
 };
 
 // Oyun durumu (ekran döndürülünce korunur)
-const state = {};
+const state = { theme: savedTheme };
 
 // ---------- ses ve titreşim ----------
 let audioCtx = null;
@@ -427,8 +439,8 @@ class Build extends Phaser.Scene {
     this.gy = Math.round(topH + pad + Math.max(0, (H - topH - trayH - pad * 2 - this.cell * ROWS) / 2));
 
     const bg = this.add.graphics();
-    bg.fillGradientStyle(C.bgTop, C.bgTop, C.bgBot, C.bgBot, 1).fillRect(0, 0, W, H);
-    bg.lineStyle(1 * D, 0xffffff, 0.03);
+    bg.fillGradientStyle(T.bgTop, T.bgTop, T.bgBot, T.bgBot, 1).fillRect(0, 0, W, H);
+    bg.lineStyle(1 * D, T.line, T.lineA);
     for (let y = 0; y < H; y += 48 * D) bg.lineBetween(0, y, W, y);
 
     if (!this.textures.exists('spark')) {
@@ -456,14 +468,14 @@ class Build extends Phaser.Scene {
     const trayY = H - trayH;
     this.trayTop = trayY;
     const tray = this.add.graphics();
-    tray.fillStyle(C.panel, 1).fillRect(0, trayY, W, trayH);
-    tray.fillStyle(C.panelHi, 1).fillRect(0, trayY, W, 2 * D);
+    tray.fillStyle(T.panel, 1).fillRect(0, trayY, W, trayH);
+    tray.fillStyle(T.panelHi, 1).fillRect(0, trayY, W, 2 * D);
     tray.fillStyle(0x000000, 0.25).fillRect(0, trayY - 6 * D, W, 6 * D);
 
     const rowH = Math.min(trayH * 0.3, 48 * D);
     this.slotTop = trayY + rowH + 6 * D;
     this.hint = this.add.text(pad, trayY + rowH / 2 + 4 * D, '', {
-      fontFamily: FONT, fontSize: Math.round(Math.min(W * 0.036, 15 * D)) + 'px', fontStyle: '500', color: C.dim,
+      fontFamily: FONT, fontSize: Math.round(Math.min(W * 0.036, 15 * D)) + 'px', fontStyle: '500', color: T.hudDim,
       wordWrap: { width: W * 0.52 },
     }).setOrigin(0, 0.5);
     const bw = Math.min(W * 0.38, 170 * D), bh = rowH * 0.82;
@@ -477,10 +489,10 @@ class Build extends Phaser.Scene {
       const y = this.slotTop + slotH * 0.33;
       const vis = drawMachine(this, type, icon).setPosition(x, y);
       const name = this.add.text(x, y + icon * 0.58, MACHINES[type].name, {
-        fontFamily: FONT, fontSize: Math.round(Math.min(W * 0.034, 14 * D)) + 'px', fontStyle: '700', color: C.cream,
+        fontFamily: FONT, fontSize: Math.round(Math.min(W * 0.034, 14 * D)) + 'px', fontStyle: '700', color: T.hud,
       }).setOrigin(0.5, 0);
       const recipe = this.add.text(x, name.y + name.height + 1 * D, INFO[type].recipe, {
-        fontFamily: FONT, fontSize: Math.round(Math.min(W * 0.032, 13 * D)) + 'px', fontStyle: '500', color: C.dim,
+        fontFamily: FONT, fontSize: Math.round(Math.min(W * 0.032, 13 * D)) + 'px', fontStyle: '500', color: T.hudDim,
       }).setOrigin(0.5, 0);
       const ring = this.add.graphics().setPosition(x, y).setDepth(4).setVisible(false);
       ring.lineStyle(3 * D, 0x5fd38a, 1).strokeCircle(0, 0, icon * 0.72);
@@ -527,6 +539,14 @@ class Build extends Phaser.Scene {
     window.__scene = this; // test ve hata ayıklama için
   }
 
+  toggleTheme() {
+    if (this.mg || this.dialog || this.drag) return;
+    state.theme = state.theme === 'dark' ? 'light' : 'dark';
+    Object.assign(T, THEMES[state.theme]);
+    try { localStorage.setItem('tiktik-theme', state.theme); } catch (e) {}
+    sfx.tap();
+    this.scene.restart();
+  }
   // ---------- üst bilgi ----------
   factoryPts(x0, y0, fw, fh) {
     // testere dişi çatılı fabrika silueti + baca
@@ -543,7 +563,17 @@ class Build extends Phaser.Scene {
     const titleSize = Math.round(Math.min(W * 0.058, 24 * D));
     this.add.text(pad, row1 + 2 * D, 'TIK TIK FABRIC', { fontFamily: FONT, fontSize: titleSize + 'px', fontStyle: '700', color: '#6e3518' }).setOrigin(0, 0.5);
     this.add.text(pad, row1, 'TIK TIK FABRIC', { fontFamily: FONT, fontSize: titleSize + 'px', fontStyle: '700', color: '#f0a76a' }).setOrigin(0, 0.5);
-    this.roundText = this.add.text(W - pad, row1, '', { fontFamily: FONT, fontSize: Math.round(Math.min(W * 0.04, 16 * D)) + 'px', fontStyle: '700', color: C.cream }).setOrigin(1, 0.5);
+    this.roundText = this.add.text(W - pad, row1, '', { fontFamily: FONT, fontSize: Math.round(Math.min(W * 0.034, 14 * D)) + 'px', fontStyle: '700', color: T.hud }).setOrigin(1, 0.5);
+    // tema düğmesi (başlığın yanında)
+    const tr = Math.min(W * 0.034, 14 * D);
+    const tb = this.add.container(pad + Math.min(W * 0.46, 200 * D), row1).setSize(tr * 3, tr * 3).setInteractive();
+    const tg = this.add.graphics();
+    tg.fillStyle(state.theme === 'dark' ? 0x2c3654 : 0x2b2340, 1).fillCircle(0, 0, tr);
+    if (state.theme === 'dark') { tg.fillStyle(0xffd84a, 1).fillCircle(0, 0, tr * 0.45); for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4; tg.lineStyle(1.6 * D, 0xffd84a, 1).lineBetween(Math.cos(a) * tr * 0.6, Math.sin(a) * tr * 0.6, Math.cos(a) * tr * 0.8, Math.sin(a) * tr * 0.8); } }
+    else { tg.fillStyle(0xe9e4ff, 1).fillCircle(0, 0, tr * 0.6); tg.fillStyle(0x2b2340, 1).fillCircle(tr * 0.25, -tr * 0.2, tr * 0.5); }
+    tb.add(tg);
+    tb.on('pointerup', () => this.toggleTheme());
+    this.themeBtn = tb;
     const fs = Math.round(Math.min(W * 0.042, 17 * D));
 
     // basınç: sağda içi dolan fabrika
@@ -553,13 +583,13 @@ class Build extends Phaser.Scene {
     const pts = this.factoryPts(fx, fy, fw, fh);
     const back = this.add.graphics();
     back.fillStyle(0x000000, 0.3).fillPoints(pts.map(p => new Phaser.Math.Vector2(p.x, p.y + 3 * D)), true);
-    back.fillStyle(0x0b0f1c, 1).fillPoints(pts, true);
+    back.fillStyle(T.barBg, 1).fillPoints(pts, true);
     this.facFill = this.add.graphics();
     const maskG = this.make.graphics({ add: false });
     maskG.fillStyle(0xffffff, 1).fillPoints(pts, true);
     this.facFill.setMask(maskG.createGeometryMask());
     const line = this.add.graphics();
-    line.lineStyle(2.5 * D, 0x6e7aa3, 1).strokePoints(pts, true);
+    line.lineStyle(2.5 * D, T.facLine, 1).strokePoints(pts, true);
     this.pLabel = this.add.text(fx + fw / 2, fy + fh * 0.53, 'BASINÇ', { fontFamily: FONT, fontSize: Math.round(fs * 0.55) + 'px', fontStyle: '700', color: '#c9d2ee', stroke: '#0b0f1c', strokeThickness: 3 * D }).setOrigin(0.5);
     this.pText = this.add.text(fx + fw / 2, fy + fh * 0.8, '', { fontFamily: FONT, fontSize: Math.round(fs * 1.05) + 'px', fontStyle: '700', color: '#f6ecdb', stroke: '#0b0f1c', strokeThickness: 4 * D }).setOrigin(0.5);
     this.chimney = { x: fx + fw * 0.145, y: fy };
@@ -574,29 +604,29 @@ class Build extends Phaser.Scene {
     this.ventBtn = makeButton(this, pad + L - vbW / 2, row3, vbW, vbH, `❄ Soğut ${RULES.ventCost}💎`, { base: 0x8fb4ff, dark: 0x3e62b0, text: '#0d1a33' }, () => this.vent());
     const restW = L - vbW - 6 * D, fs2 = Math.round(fs * 0.92);
     const mk = (i, key) => this.add.text(pad + restW * (i / 3), row3, '', { fontFamily: FONT, fontSize: fs2 + 'px', fontStyle: '700', color: key }).setOrigin(0, 0.5);
-    this.energyText = mk(0, RES.energy.color);
-    this.moneyText = mk(1, RES.money.color);
-    this.timeText = mk(2, C.cream);
+    this.energyText = mk(0, T.energy);
+    this.moneyText = mk(1, T.money);
+    this.timeText = mk(2, T.hud);
     this.lastRes = {};
     this.updateHud(true);
   }
 
   updateHud(force) {
     const r = state.res, goal = RULES.goals[state.round];
-    this.roundText.setText(`Bölüm ${this.chapter() + 1} · Tur ${state.round + 1}/${RULES.goals.length}${BOSS[state.round] ? ' ☠' : ''}`).setColor(BOSS[state.round] ? '#ff8a7c' : C.cream);
+    this.roundText.setText(`Bölüm ${this.chapter() + 1} · Tur ${state.round + 1}/${RULES.goals.length}${BOSS[state.round] ? ' ☠' : ''}`).setColor(BOSS[state.round] ? (state.theme === 'light' ? '#c0392b' : '#ff8a7c') : T.hud);
     const b = this.bar, g = this.barG, f = Math.min(1, r.spark / goal);
     g.clear();
-    g.fillStyle(0x0b0f1c, 1).fillRoundedRect(b.x, b.y, b.w, b.h, b.h / 2);
+    g.fillStyle(T.barBg, 1).fillRoundedRect(b.x, b.y, b.w, b.h, b.h / 2);
     if (f > 0) {
       g.fillStyle(f >= 1 ? 0x5fd38a : 0xe0a72a, 1).fillRoundedRect(b.x, b.y, Math.max(b.h, b.w * f), b.h, b.h / 2);
       g.fillStyle(0xffffff, 0.25).fillRoundedRect(b.x + b.h * 0.3, b.y + b.h * 0.15, Math.max(0, b.w * f - b.h * 0.6), b.h * 0.22, b.h * 0.1);
     }
-    g.lineStyle(2 * D, 0x2c3654, 1).strokeRoundedRect(b.x, b.y, b.w, b.h, b.h / 2);
-    this.sparkText.setText(`✦ ${r.spark} / ${goal}`).setColor(f > 0.45 ? '#1a1405' : '#ffd84a');
+    g.lineStyle(2 * D, T.barLine, 1).strokeRoundedRect(b.x, b.y, b.w, b.h, b.h / 2);
+    this.sparkText.setText(`✦ ${r.spark} / ${goal}`).setColor(f > 0.45 ? '#1a1405' : T.barText);
     this.energyText.setText(`⚡ ${r.energy}`);
     this.moneyText.setText(`💎 ${r.money}`);
     const t = Math.ceil(state.time);
-    this.timeText.setText(`⏱ ${t}`).setColor(state.phase === 'run' && t <= 10 ? '#ff7a6b' : C.cream);
+    this.timeText.setText(`⏱ ${t}`).setColor(state.phase === 'run' && t <= 10 ? (state.theme === 'light' ? '#c0392b' : '#ff7a6b') : T.hud);
     // fabrika dolumu
     const fa = this.fac, pf = Math.min(1, state.pressure / 100), fg = this.facFill;
     fg.clear();
@@ -1706,13 +1736,14 @@ class Build extends Phaser.Scene {
     const g = this.gridG, s = this.cell, gap = Math.max(2, s * 0.04), rr = s * 0.14;
     g.clear();
     const wx = this.gx - 8 * D, wy = this.gy - 8 * D, ww = s * COLS + 16 * D, wh = s * ROWS + 16 * D;
-    g.fillStyle(C.copperDark, 1).fillRoundedRect(wx - 3 * D, wy - 3 * D, ww + 6 * D, wh + 6 * D, 18 * D);
-    g.fillStyle(C.well, 1).fillRoundedRect(wx, wy, ww, wh, 15 * D);
+    g.fillStyle(T.frame, 1).fillRoundedRect(wx - T.frameW * D, wy - T.frameW * D, ww + T.frameW * 2 * D, wh + T.frameW * 2 * D, 18 * D);
+    g.fillStyle(T.well, 1).fillRoundedRect(wx, wy, ww, wh, 15 * D);
     for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
       const x = this.gx + c * s + gap, y = this.gy + r * s + gap, w = s - gap * 2;
-      g.fillStyle(C.cellLo, 1).fillRoundedRect(x, y, w, w, rr);
-      g.fillStyle(C.cell, 1).fillRoundedRect(x, y + 2 * D, w, w - 2 * D, rr);
-      g.fillStyle(C.cellHi, 0.5).fillRoundedRect(x + w * 0.2, y + w - 4 * D, w * 0.6, 2 * D, 1 * D);
+      g.fillStyle(T.cellLo, 1).fillRoundedRect(x, y, w, w, rr);
+      g.fillStyle(T.cell, 1).fillRoundedRect(x, y + 2 * D, w, w - 2 * D, rr);
+      if (T.cellLine) g.lineStyle(1 * D, T.cellLine, 0.15).strokeRoundedRect(x, y, w, w, rr);
+      g.fillStyle(T.cellHi, 0.5).fillRoundedRect(x + w * 0.2, y + w - 4 * D, w * 0.6, 2 * D, 1 * D);
     }
     [[wx + 10 * D, wy + 10 * D], [wx + ww - 10 * D, wy + 10 * D], [wx + 10 * D, wy + wh - 10 * D], [wx + ww - 10 * D, wy + wh - 10 * D]]
       .forEach(([x, y]) => rivet(g, x, y, 3.5 * D));
