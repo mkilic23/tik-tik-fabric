@@ -54,6 +54,13 @@ const MACHINES = {
   fan:   { name: 'Fan',    sym: '',  color: 0x8fb4ff, dark: 0x3e62b0 },
 };
 const ORDER = ['crank', 'press', 'mint', 'fan'];
+// oyuncuya gösterilen tarif ve açıklama
+const INFO = {
+  crank: { recipe: '→ ⚡',     title: 'Krank: enerji üretir',          body: 'Her saniye +1 ⚡ enerji. Diğer makineler bu enerjiyle çalışır.' },
+  press: { recipe: '⚡ → ✦',   title: 'Pres: kıvılcım yapar',          body: '1 ⚡ harcar, 1 ✦ yapar. Tur hedefi kıvılcımdır!' },
+  mint:  { recipe: '⚡ → ●',   title: 'Basıcı: para yapar',            body: '1 ⚡ harcar, 1 ● yapar. Para ileride dükkanda harcanacak.' },
+  fan:   { recipe: 'soğutur',  title: 'Fan: komşularını soğutur',      body: 'Makineler Adım 4\'te ısınmaya başlayacak. Şimdilik boşta.' },
+};
 
 // Oyun durumu (ekran döndürülünce korunur)
 const state = {};
@@ -218,6 +225,7 @@ function newRun() {
   state.result = null;
 }
 newRun();
+state.tutorialDone = false;
 
 function makeButton(scene, x, y, w, h, label, color, onTap) {
   const k = scene.add.container(x, y);
@@ -299,21 +307,39 @@ class Build extends Phaser.Scene {
 
     const slotW = (W - pad * 2) / ORDER.length;
     const slotH = H - this.slotTop;
-    const icon = Math.min(slotW * 0.55, slotH * 0.5);
+    const icon = Math.min(slotW * 0.5, slotH * 0.42);
     this.slots = ORDER.map((type, i) => {
       const x = pad + slotW * i + slotW / 2;
-      const y = this.slotTop + slotH * 0.4;
+      const y = this.slotTop + slotH * 0.33;
       const vis = drawMachine(this, type, icon).setPosition(x, y);
-      const name = this.add.text(x, y + icon * 0.6, MACHINES[type].name, {
+      const name = this.add.text(x, y + icon * 0.58, MACHINES[type].name, {
         fontFamily: FONT, fontSize: Math.round(Math.min(W * 0.034, 14 * D)) + 'px', fontStyle: '700', color: C.cream,
       }).setOrigin(0.5, 0);
-      return { type, x, y, r: slotW / 2, vis, name };
+      const recipe = this.add.text(x, name.y + name.height + 1 * D, INFO[type].recipe, {
+        fontFamily: FONT, fontSize: Math.round(Math.min(W * 0.032, 13 * D)) + 'px', fontStyle: '500', color: C.dim,
+      }).setOrigin(0.5, 0);
+      const ring = this.add.graphics().setPosition(x, y).setDepth(4).setVisible(false);
+      ring.lineStyle(3 * D, 0x5fd38a, 1).strokeCircle(0, 0, icon * 0.72);
+      this.tweens.add({ targets: ring, scale: { from: 0.9, to: 1.12 }, alpha: { from: 1, to: 0.3 }, duration: 600, yoyo: true, repeat: -1 });
+      return { type, x, y, r: slotW / 2, vis, name, recipe, ring };
     });
 
     this.trashBg = this.add.rectangle(0, trayY, W, trayH, 0x3a1d22, 0.94).setOrigin(0).setDepth(19).setVisible(false);
     this.trashText = this.add.text(W / 2, trayY + trayH / 2, '✕  Kaldırmak için buraya bırak', {
       fontFamily: FONT, fontSize: Math.round(Math.min(W * 0.044, 18 * D)) + 'px', fontStyle: '700', color: '#ffb3ab',
     }).setOrigin(0.5).setDepth(20).setVisible(false);
+
+    // bilgi kartı (makine açıklaması ve öğretici)
+    const bnH = Math.min(84 * D, H * 0.11), bnW = W - pad * 2;
+    this.banner = this.add.container(pad, trayY - bnH - 12 * D).setDepth(40).setVisible(false);
+    this.bannerG = this.add.graphics();
+    this.bannerT1 = this.add.text(14 * D, bnH * 0.3, '', { fontFamily: FONT, fontSize: Math.round(Math.min(W * 0.042, 17 * D)) + 'px', fontStyle: '700', color: '#ffe3a8' }).setOrigin(0, 0.5);
+    this.bannerT2 = this.add.text(14 * D, bnH * 0.66, '', { fontFamily: FONT, fontSize: Math.round(Math.min(W * 0.035, 14 * D)) + 'px', fontStyle: '500', color: C.cream, wordWrap: { width: bnW - 28 * D } }).setOrigin(0, 0.5);
+    this.banner.add([this.bannerG, this.bannerT1, this.bannerT2]);
+    this.bannerSize = { w: bnW, h: bnH };
+    this.goRing = this.add.graphics().setDepth(4).setVisible(false);
+    this.goRing.lineStyle(3 * D, 0x5fd38a, 1).strokeRoundedRect(this.goBtn.x - this.goBtn.width / 2 - 6 * D, this.goBtn.y - this.goBtn.height / 2 - 6 * D, this.goBtn.width + 12 * D, this.goBtn.height + 12 * D, this.goBtn.height / 2 + 6 * D);
+    this.tweens.add({ targets: this.goRing, alpha: { from: 1, to: 0.2 }, duration: 600, yoyo: true, repeat: -1 });
 
     state.grid.forEach((t, i) => { if (t) this.spawnCell(i, t, false); });
 
@@ -382,7 +408,7 @@ class Build extends Phaser.Scene {
   refreshPhase() {
     const build = state.phase === 'build';
     this.goBtn.setVisible(build);
-    this.slots.forEach(s => { s.vis.setAlpha(build && state.places > 0 ? 1 : 0.35); s.name.setAlpha(build && state.places > 0 ? 1 : 0.35); });
+    this.slots.forEach(s => { s.vis.setAlpha(build && state.places > 0 ? 1 : 0.35); s.name.setAlpha(build && state.places > 0 ? 1 : 0.35); s.recipe.setAlpha(s.name.alpha); });
     if (build) {
       const n = state.grid.filter(Boolean).length;
       this.hint.setText(state.places > 0
@@ -393,6 +419,54 @@ class Build extends Phaser.Scene {
       this.hint.setText('Üretim sürüyor. Makinelere dokun!');
     }
     this.updateHud(true);
+    this.tutorial();
+  }
+
+  // ---------- açıklama kartı ----------
+  setBanner(title, body, accent) {
+    const { w, h } = this.bannerSize, g = this.bannerG;
+    g.clear();
+    g.fillStyle(0x000000, 0.35).fillRoundedRect(0, 4 * D, w, h, 16 * D);
+    g.fillStyle(0x232c4a, 0.97).fillRoundedRect(0, 0, w, h, 16 * D);
+    g.lineStyle(2 * D, accent || C.brass, 1).strokeRoundedRect(0, 0, w, h, 16 * D);
+    this.bannerT1.setText(title);
+    this.bannerT2.setText(body);
+    this.banner.setVisible(true);
+  }
+  showInfo(type) {
+    const m = MACHINES[type], info = INFO[type];
+    this.setBanner(info.title + '   ' + info.recipe, info.body, m.color);
+    this.infoUntil = this.time.now + 2800;
+  }
+  tutorial() {
+    // ilk turda adım adım yol göster
+    this.slots.forEach(s => s.ring.setVisible(false));
+    this.goRing.setVisible(false);
+    if (this.infoUntil && this.time.now < this.infoUntil) return;
+    if (state.round !== 0 || state.tutorialDone) {
+      if (state.phase !== 'run') this.banner.setVisible(false);
+      return;
+    }
+    const has = t => state.grid.includes(t);
+    if (state.phase === 'build') {
+      if (!has('crank')) {
+        this.setBanner('1 / 3   Önce bir Krank koy', 'Krank enerji ⚡ üretir. Diğer makineler enerjiyle çalışır.', MACHINES.crank.color);
+        this.slots[0].ring.setVisible(true);
+      } else if (!has('press')) {
+        this.setBanner('2 / 3   Şimdi bir Pres koy', 'Pres enerjiyi ⚡ kıvılcıma ✦ çevirir. Hedef kıvılcımdır!', MACHINES.press.color);
+        this.slots[1].ring.setVisible(true);
+      } else {
+        this.setBanner('3 / 3   Hazırsın! ▶ Başlat\'a bas', 'Kalan hakkınla bir Pres daha koyabilirsin. 60 saniyede ✦ 30 topla.', 0x5fd38a);
+        this.goRing.setVisible(true);
+      }
+    } else if (state.phase === 'run') {
+      if (state.time > RULES.roundTime - 8) {
+        this.setBanner('⚡ Krank\'tan Pres\'e enerji akıyor', 'Pres her enerjiyi ✦ kıvılcıma çeviriyor. Makinelere dokunursan daha hızlı üretirler!', MACHINES.press.color);
+      } else {
+        this.banner.setVisible(false);
+        state.tutorialDone = true;
+      }
+    }
   }
 
   // ---------- tur akışı ----------
@@ -467,7 +541,7 @@ class Build extends Phaser.Scene {
     const p = PROD[v.type];
     if (!p.out) return false;
     if (p.cost && state.res[p.cost] < 1) { v.stalled = true; return false; }
-    if (p.cost) state.res[p.cost] -= 1;
+    if (p.cost) { state.res[p.cost] -= 1; this.flowEnergy(i); }
     state.res[p.out] += 1;
     v.stalled = false;
     const c = this.cellCenter(i);
@@ -483,10 +557,30 @@ class Build extends Phaser.Scene {
     return true;
   }
 
+  flowEnergy(to) {
+    // en yakın Krank'tan bu makineye uçan ⚡
+    let best = -1, bd = 1e9;
+    const tc = this.cellCenter(to);
+    state.grid.forEach((t, j) => {
+      if (t !== 'crank') return;
+      const c = this.cellCenter(j), d = (c.x - tc.x) ** 2 + (c.y - tc.y) ** 2;
+      if (d < bd) { bd = d; best = j; }
+    });
+    if (best < 0) return;
+    const from = this.cellCenter(best);
+    const bolt = this.add.text(from.x, from.y, '⚡', { fontFamily: FONT, fontSize: Math.round(this.cell * 0.24) + 'px', color: '#4fd6e0', stroke: '#0b0f1c', strokeThickness: 3 * D }).setOrigin(0.5).setDepth(55);
+    this.tweens.add({ targets: bolt, x: tc.x, y: tc.y, duration: 320, ease: 'Sine.easeIn', onComplete: () => {
+      bolt.destroy();
+      this.sparks.explode(4, tc.x, tc.y);
+    } });
+  }
+
   update(_, dtMs) {
     const dt = dtMs / 1000;
     this.cells.forEach(v => { if (v && v.blades) v.blades.rotation += dtMs * (state.phase === 'run' ? 0.012 : 0.004); });
     this.slots.forEach(s => { if (s.vis.blades) s.vis.blades.rotation += dtMs * 0.003; });
+    this.tutT = (this.tutT || 0) + dt;
+    if (this.tutT > 0.25) { this.tutT = 0; this.tutorial(); }
     if (state.phase !== 'run') return;
 
     state.time -= dt;
@@ -552,9 +646,14 @@ class Build extends Phaser.Scene {
       const slot = this.slots.find(s => Math.abs(p.x - s.x) < s.r);
       if (slot) {
         this.startDrag(slot.type, -1, p);
+        this.showInfo(slot.type);
         this.tweens.add({ targets: slot.vis, scale: 0.85, duration: 60, yoyo: true });
         return;
       }
+    }
+    if (p.y > this.slotTop) {
+      const slot = this.slots.find(s => Math.abs(p.x - s.x) < s.r);
+      if (slot) { this.showInfo(slot.type); return; }
     }
     const i = this.cellAt(p.x, p.y);
     if (i >= 0 && state.grid[i]) this.pending = { i, x: p.x, y: p.y };
@@ -613,6 +712,7 @@ class Build extends Phaser.Scene {
         this.sparks.explode(10, p.x, p.y);
         sfx.tap();
         if (state.phase === 'run' && (v.cd || 0) <= 0) { v.cd = RULES.tapCooldown; this.produce(i, v, true); }
+        if (state.phase === 'build') this.showInfo(v.type);
       }
       return;
     }
