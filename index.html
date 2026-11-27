@@ -355,6 +355,7 @@ const RULES = {
   startPlaces: 3,                      // 1. turda yerleştirme hakkı
   placesPerRound: 2,                   // sonraki turlarda eklenen hak
   startMoney: 10,
+  chapterKit: [0, 15, 30],             // bölüm 2/3'ten başlayınca verilen ek 💎 (kaçırılan turların yerine)
   heatRate: { crank: 0.045, press: 0.04, mint: 0.035, fan: 0.03 }, // saniyede ısınma (0-1)
   idleHeat: 0.4,                       // çalışamayan makine bu oranda ısınır
   fanCool: 0.5,                        // Fan'ın 2x2 alanındaki makineler yarı hızda ısınır
@@ -455,10 +456,10 @@ const ENG = {
   tamirci: { name: 'Usta Tamirci', cost: 15, color: 0x5fd38a, desc: 'Mini oyunlarda Mükemmel alanı %60 daha geniş.' },
   tuccar:  { name: 'Tüccar',       cost: 15, color: 0xe0b450, desc: 'Dükkanda +1 teklif ve %20 indirim, ama makineler %15 yavaş.' },
 };
-const META = { scrap: 0, lv: { money: 0, place: 0, shield: 0, offer: 0 }, eng: { cirak: true }, pick: 'cirak', runs: 0 };
+const META = { scrap: 0, lv: { money: 0, place: 0, shield: 0, offer: 0 }, eng: { cirak: true }, pick: 'cirak', runs: 0, maxCh: 0, startCh: 0 };
 try { const m = JSON.parse(localStorage.getItem('tiktik-meta') || 'null'); if (m) { Object.assign(META, m); META.lv = Object.assign({ money: 0, place: 0, shield: 0, offer: 0 }, m.lv); META.eng = Object.assign({ cirak: true }, m.eng); } } catch (e) {}
 function saveMeta() { try { localStorage.setItem('tiktik-meta', JSON.stringify(META)); } catch (e) {} }
-const RUN_KEYS = ['grid', 'rot', 'heat', 'mod', 'round', 'res', 'places', 'offers', 'shopOpen', 'rerolls', 'seenIntro', 'tutorialDone', 'serviceTaught', 'ventTaught', 'eng'];
+const RUN_KEYS = ['grid', 'rot', 'heat', 'mod', 'round', 'res', 'places', 'offers', 'shopOpen', 'rerolls', 'seenIntro', 'tutorialDone', 'serviceTaught', 'ventTaught', 'eng', 'startRound'];
 function saveRun() {
   if (state.phase !== 'build' || state.showMeta) return;
   try { const o = {}; RUN_KEYS.forEach(k => { o[k] = state[k]; }); localStorage.setItem('tiktik-run', JSON.stringify(o)); } catch (e) {}
@@ -495,6 +496,15 @@ function newRun() {
   state.needIntro = true;
   state.mod = new Array(COLS * ROWS).fill(null);   // takılı modüller
   state.offers = null; state.shopOpen = false; state.rerolls = 0;
+  // ulaşılmış bir bölümden başlama: kaçırılan turların hakkı ve ek para verilir
+  const c = Math.min(META.startCh || 0, META.maxCh || 0);
+  state.startRound = c * RULES.roundsPer; state.chStart = 0;
+  if (c > 0) {
+    state.round = state.startRound;
+    state.places += RULES.placesPerRound * state.startRound;
+    state.res.money += RULES.chapterKit[c];
+    state.needIntro = false; state.shopOpen = true; state.chStart = c;
+  }
 }
 newRun();
 state.tutorialDone = false;
@@ -632,8 +642,9 @@ class Build extends Phaser.Scene {
 
     this.refreshPhase();
     if (state.phase === 'end' || state.phase === 'boom') this.showResult();
-    if (state.phase === 'build' && state.shopOpen) this.openShop();
+    if (state.phase === 'build' && state.shopOpen && !state.chStart) this.openShop();
     if (state.showMeta) this.openMeta();
+    else if (state.chStart) { const c = state.chStart; state.chStart = 0; this.showDialog([`Bölüm ${c + 1}'den başlıyoruz evlat! Kaçırdığın turlar için kasaya +${RULES.chapterKit[c]} 💎 koydum, fazladan yerleştirme hakkın da var. Önce dükkana bir bak.`], () => this.openShop()); }
     else if (state.resumed) { state.resumed = false; this.flashTip('Kaldığın yerden devam', `Tur ${state.round + 1} başından devam ediyorsun.`, 0x5fd38a, 2500); }
     else if (state.needIntro && state.phase === 'build' && state.round === 0) {
       // ekran yeniden kurulursa (döndürme) konuşma baştan gösterilir; bitince bir daha çıkmaz
@@ -946,7 +957,8 @@ class Build extends Phaser.Scene {
   // ATÖLYE: koşular arası kalıcı açılımlar
   // =====================================================================
   awardScrap(rounds, won) {
-    const s = rounds * 2 + Math.floor(rounds / RULES.roundsPer) * 5 + (won ? 10 : 0);
+    const r0 = state.startRound || 0;   // ortadan başlanan koşuda sadece oynanan turlar sayılır
+    const s = (rounds - r0) * 2 + (Math.floor(rounds / RULES.roundsPer) - Math.floor(r0 / RULES.roundsPer)) * 5 + (won ? 10 : 0);
     META.scrap += s; META.runs += 1; saveMeta(); clearRun();
     return s;
   }
@@ -968,7 +980,7 @@ class Build extends Phaser.Scene {
     // mühendisler
     const h1 = this.add.text(pad, y, 'Mühendis', { fontFamily: FONT, fontSize: fs + 'px', fontStyle: '700', color: '#ffe3a8' });
     k.add(h1); y += h1.height + 8 * D;
-    const keys = Object.keys(ENG), gap = 8 * D, cw = (W - pad * 2 - gap * 2) / 3, ch = Math.min(cw * 1.25, H * 0.2);
+    const keys = Object.keys(ENG), gap = 8 * D, cw = (W - pad * 2 - gap * 2) / 3, ch = Math.min(cw * 1.15, H * 0.185);
     keys.forEach((key, n) => {
       const e = ENG[key], x = pad + n * (cw + gap), owned = !!META.eng[key], sel = META.pick === key;
       g.fillStyle(sel ? 0x2c3654 : 0x1b2238, 1).fillRoundedRect(x, y, cw, ch, 14 * D);
@@ -983,11 +995,11 @@ class Build extends Phaser.Scene {
         k.add(makeButton(this, x + cw / 2, by, cw - 14 * D, bh, owned ? 'Seç' : `${e.cost} 🔩 Aç`, can ? (owned ? BTN_BRASS : BTN_GO) : { base: 0x3a4466, dark: 0x252d47, text: '#8e97b8' }, () => this.metaEng(key)));
       }
     });
-    y += ch + 18 * D;
+    y += ch + 14 * D;
     // yükseltmeler
     const h2 = this.add.text(pad, y, 'Yükseltmeler', { fontFamily: FONT, fontSize: fs + 'px', fontStyle: '700', color: '#ffe3a8' });
     k.add(h2); y += h2.height + 8 * D;
-    const rh = Math.min(58 * D, H * 0.075);
+    const rh = Math.min(54 * D, H * 0.066);
     Object.keys(UPG).forEach(key => {
       const u = UPG[key], lv = META.lv[key], max = u.cost.length, full = lv >= max;
       g.fillStyle(0x1b2238, 1).fillRoundedRect(pad, y, W - pad * 2, rh, 12 * D);
@@ -1000,9 +1012,22 @@ class Build extends Phaser.Scene {
         const c = u.cost[lv], can = META.scrap >= c;
         k.add(makeButton(this, bx, y + rh / 2, bw, rh * 0.6, `${c} 🔩`, can ? BTN_GO : { base: 0x3a4466, dark: 0x252d47, text: '#8e97b8' }, () => this.metaBuy(key)));
       }
-      y += rh + 8 * D;
+      y += rh + 6 * D;
     });
-    y += 10 * D;
+    // başlangıç bölümü
+    y += 6 * D;
+    const h3 = this.add.text(pad, y, 'Başlangıç bölümü', { fontFamily: FONT, fontSize: fs + 'px', fontStyle: '700', color: '#ffe3a8' });
+    k.add(h3); y += h3.height + 8 * D;
+    const nC = RULES.chapters.length, cbw = (W - pad * 2 - gap * (nC - 1)) / nC, cbh = Math.min(40 * D, H * 0.052);
+    for (let c = 0; c < nC; c++) {
+      const x = pad + c * (cbw + gap) + cbw / 2, open = c <= (META.maxCh || 0), sel = c === Math.min(META.startCh || 0, META.maxCh || 0);
+      const label = open ? (sel ? `✓ Bölüm ${c + 1}` : `Bölüm ${c + 1}`) : `🔒 Bölüm ${c + 1}`;
+      const st = !open ? { base: 0x3a4466, dark: 0x252d47, text: '#8e97b8' } : sel ? BTN_GO : BTN_BRASS;
+      k.add(makeButton(this, x, y + cbh / 2, cbw, cbh, label, st, () => this.metaStart(c)));
+    }
+    y += cbh + 6 * D;
+    const note = this.add.text(W / 2, y, (META.maxCh || 0) > 0 ? 'Ulaştığın bölümden başlayabilirsin. Hurda sadece oynadığın turlardan gelir.' : 'Bir bölüme ulaşınca oradan başlayabilirsin.', { fontFamily: FONT, fontSize: fsS + 'px', fontStyle: '500', color: C.dim, align: 'center', wordWrap: { width: W - pad * 2 } }).setOrigin(0.5, 0);
+    k.add(note); y += note.height + 10 * D;
     const go = makeButton(this, W / 2, Math.min(y + 28 * D, H - 40 * D), Math.min(W * 0.7, 300 * D), Math.min(56 * D, H * 0.07), '▶  Yeni koşu', BTN_GO, () => this.closeMeta());
     k.add(go);
     this.meta = k;
@@ -1024,6 +1049,10 @@ class Build extends Phaser.Scene {
     META.scrap -= u.cost[lv]; META.lv[key] = lv + 1; saveMeta();
     [523, 659, 784].forEach((f, i) => setTimeout(() => beep(f, 0.1, 'triangle', 0.15), i * 70)); buzz(20);
     this.openMeta();
+  }
+  metaStart(c) {
+    if (c > (META.maxCh || 0)) { this.cameras.main.shake(80, 0.004); sfx.bad(); return; }
+    META.startCh = c; saveMeta(); sfx.tap(); this.openMeta();
   }
   closeMeta() {
     if (this.meta) { this.meta.destroy(); this.meta = null; }
@@ -1247,6 +1276,7 @@ class Build extends Phaser.Scene {
     const R = state.result;
     if (!R.boom && !R.last) {
       state.round++;
+      if (state.round % RULES.roundsPer === 0) { META.maxCh = Math.max(META.maxCh || 0, Math.min(RULES.chapters.length - 1, state.round / RULES.roundsPer)); saveMeta(); }
       state.phase = 'build';
       state.places += RULES.placesPerRound;
       state.res.spark = 0;
