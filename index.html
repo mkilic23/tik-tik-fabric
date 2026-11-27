@@ -231,6 +231,9 @@ const RULES = {
   bufMax: 4,                           // Krank'ın biriktirebildiği enerji
   mgTime: 4,                           // mini oyun süre sınırı
   bonusEvery: 3,                       // hedef tutunca: kalan her 3 sn = +1 ● bonus
+  ringSpeed: 1.3, ringHeat: 1.2,       // Halka komşularına: hız ve ısınma çarpanı
+  plateHeat: 0.6,                      // Plaka: ısınma çarpanı
+  rerollCost: 2,                       // dükkan yenileme (her yenilemede +1)
 };
 // her makine: kaç saniyede bir çalışır, ne harcar, ne üretir
 const PROD = {
@@ -238,6 +241,13 @@ const PROD = {
   press: { every: 1.5, cost: 'energy', out: 'spark' },
   mint:  { every: 2.5, cost: 'energy', out: 'money' },
   fan:   { every: 0,   cost: null,     out: null },
+};
+// dükkan teklifleri
+const SHOP = {
+  ring:  { name: 'Güçlendirici Halka', cost: 6, mod: true, color: 0xe0b450, desc: 'Komşu makineler %30 hızlı çalışır ama biraz daha çok ısınır.' },
+  plate: { name: 'Yalıtım Plakası',    cost: 5, mod: true, color: 0x9fb0c8, desc: 'Takılan makine %40 daha yavaş ısınır.' },
+  place: { name: '+1 Yerleştirme',     cost: 4, color: 0x5fd38a, desc: 'Bir makine daha koyma hakkı.' },
+  ice:   { name: 'Buz Kalıbı',         cost: 6, color: 0x8fb4ff, desc: 'Tüm makineleri hemen tamamen soğutur.' },
 };
 const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]];  // 0 yukarı, 1 sağ, 2 aşağı, 3 sol
 const DEFAULT_ROT = { crank: 1, press: 0, mint: 0, fan: 0 };
@@ -285,6 +295,8 @@ function newRun() {
   state.buf = new Array(COLS * ROWS).fill(0);      // Krank'ta biriken enerji
   state.boomT = RULES.boomDelay;
   state.needIntro = true;
+  state.mod = new Array(COLS * ROWS).fill(null);   // takılı modüller
+  state.offers = null; state.shopOpen = false; state.rerolls = 0;
 }
 newRun();
 state.tutorialDone = false;
@@ -317,7 +329,7 @@ class Build extends Phaser.Scene {
   create() {
     const W = this.scale.width, H = this.scale.height;
     this.W = W; this.H = H;
-    this.dialog = null; this.mg = null; this.lastP = undefined; // sahne yeniden başlarken eski durum kalmasın
+    this.dialog = null; this.mg = null; this.shop = null; this.pickMod = null; this.lastP = undefined; // sahne yeniden başlarken eski durum kalmasın
 
     const pad = 16 * D;
     this.pad = pad;
@@ -421,6 +433,7 @@ class Build extends Phaser.Scene {
 
     this.refreshPhase();
     if (state.phase === 'end' || state.phase === 'boom') this.showResult();
+    if (state.phase === 'build' && state.shopOpen) this.openShop();
     if (state.needIntro && state.phase === 'build' && state.round === 0) {
       // ekran yeniden kurulursa (döndürme) konuşma baştan gösterilir; bitince bir daha çıkmaz
       this.showDialog(state.seenIntro ? STORY.again : STORY.intro, () => { state.needIntro = false; state.seenIntro = true; });
@@ -564,6 +577,147 @@ class Build extends Phaser.Scene {
     this.tutorial();
   }
 
+  // =====================================================================
+  // DÜKKAN VE MODÜLLER
+  // =====================================================================
+  hasRingNear(i) {
+    for (let d = 0; d < 4; d++) { const j = this.nb(i, d); if (j >= 0 && state.grid[j] && state.mod[j] === 'ring') return true; }
+    return false;
+  }
+  rollOffers() {
+    const keys = Object.keys(SHOP);
+    state.offers = [0, 1, 2].map(() => ({ key: Phaser.Utils.Array.GetRandom(keys), sold: false }));
+    // en az bir modül olsun
+    if (!state.offers.some(o => SHOP[o.key].mod)) state.offers[0].key = Math.random() < 0.5 ? 'ring' : 'plate';
+  }
+  drawShopIcon(g, key, x, y, r) {
+    if (key === 'ring') {
+      g.lineStyle(r * 0.34, C.brassDark, 1).strokeCircle(x, y + r * 0.08, r * 0.62);
+      g.lineStyle(r * 0.3, C.brass, 1).strokeCircle(x, y, r * 0.62);
+      g.lineStyle(r * 0.1, C.brassHi, 1).beginPath().arc(x, y, r * 0.66, Math.PI * 1.1, Math.PI * 1.6).strokePath();
+      [0, 1, 2, 3].forEach(k => { const a = k * Math.PI / 2 + Math.PI / 4; rivet(g, x + Math.cos(a) * r * 0.62, y + Math.sin(a) * r * 0.62, r * 0.09); });
+    } else if (key === 'plate') {
+      g.fillStyle(0x4a5878, 1).fillRoundedRect(x - r * 0.75, y - r * 0.5 + r * 0.1, r * 1.5, r * 1.0, r * 0.2);
+      g.fillStyle(0x9fb0c8, 1).fillRoundedRect(x - r * 0.75, y - r * 0.5, r * 1.5, r * 1.0, r * 0.2);
+      g.fillStyle(0xc9d6e8, 1).fillRect(x - r * 0.55, y - r * 0.12, r * 1.1, r * 0.08).fillRect(x - r * 0.55, y + r * 0.08, r * 1.1, r * 0.08);
+      [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([a, b]) => rivet(g, x + a * r * 0.58, y + b * r * 0.33, r * 0.08));
+    } else if (key === 'place') {
+      g.fillStyle(C.cellLo, 1).fillRoundedRect(x - r * 0.7, y - r * 0.7, r * 1.4, r * 1.4, r * 0.25);
+      g.lineStyle(r * 0.1, 0x5fd38a, 1).strokeRoundedRect(x - r * 0.7, y - r * 0.7, r * 1.4, r * 1.4, r * 0.25);
+      g.fillStyle(0x5fd38a, 1).fillRect(x - r * 0.4, y - r * 0.08, r * 0.8, r * 0.16).fillRect(x - r * 0.08, y - r * 0.4, r * 0.16, r * 0.8);
+    } else if (key === 'ice') {
+      g.fillStyle(0x8fb4ff, 0.25).fillCircle(x, y, r * 0.8);
+      g.lineStyle(r * 0.14, 0xdfe9ff, 1);
+      for (let k = 0; k < 3; k++) { const a = k * Math.PI / 3; g.lineBetween(x - Math.cos(a) * r * 0.65, y - Math.sin(a) * r * 0.65, x + Math.cos(a) * r * 0.65, y + Math.sin(a) * r * 0.65); }
+      g.fillStyle(0xffffff, 1).fillCircle(x, y, r * 0.14);
+    }
+  }
+  openShop() {
+    if (this.shop) this.shop.destroy();
+    if (!state.offers) this.rollOffers();
+    const W = this.W, H = this.H, pad = this.pad;
+    const k = this.add.container(0, 0).setDepth(120);
+    const dim = this.add.rectangle(0, 0, W, H, 0x05070d, 0.7).setOrigin(0).setInteractive();
+    const cw = W - pad * 2, gap = 10 * D;
+    const cardW = (cw - gap * 2) / 3, cardH = Math.min(cardW * 1.95, H * 0.4);
+    const top = Math.max(this.topH * 0.5, H * 0.5 - cardH / 2 - 90 * D);
+    const g = this.add.graphics();
+    const fsT = Math.round(Math.min(W * 0.06, 25 * D)), fs = Math.round(Math.min(W * 0.034, 14 * D));
+    const title = this.add.text(W / 2, top, 'Nuri Usta\'nın Dükkanı', { fontFamily: FONT, fontSize: fsT + 'px', fontStyle: '700', color: '#f0a76a' }).setOrigin(0.5, 0);
+    const money = this.add.text(W / 2, top + fsT * 1.35, `Paran: ● ${state.res.money}`, { fontFamily: FONT, fontSize: Math.round(fsT * 0.7) + 'px', fontStyle: '700', color: RES.money.color }).setOrigin(0.5, 0);
+    k.add([dim, g, title, money]);
+    const cy0 = top + fsT * 2.6;
+    state.offers.forEach((o, n) => {
+      const it = SHOP[o.key], x = pad + n * (cardW + gap);
+      g.fillStyle(0x000000, 0.35).fillRoundedRect(x, cy0 + 5 * D, cardW, cardH, 16 * D);
+      g.fillStyle(o.sold ? 0x161c2e : 0x232c4a, 1).fillRoundedRect(x, cy0, cardW, cardH, 16 * D);
+      g.lineStyle(2 * D, o.sold ? 0x2c3654 : it.color, 1).strokeRoundedRect(x, cy0, cardW, cardH, 16 * D);
+      const ig = this.add.graphics().setAlpha(o.sold ? 0.3 : 1);
+      this.drawShopIcon(ig, o.key, x + cardW / 2, cy0 + cardH * 0.2, cardW * 0.22);
+      const name = this.add.text(x + cardW / 2, cy0 + cardH * 0.37, it.name, { fontFamily: FONT, fontSize: fs + 'px', fontStyle: '700', color: C.cream, align: 'center', wordWrap: { width: cardW - 12 * D } }).setOrigin(0.5, 0).setAlpha(o.sold ? 0.4 : 1);
+      const desc = this.add.text(x + cardW / 2, name.y + name.height + 4 * D, it.desc, { fontFamily: FONT, fontSize: Math.round(fs * 0.86) + 'px', fontStyle: '500', color: C.dim, align: 'center', wordWrap: { width: cardW - 14 * D }, lineSpacing: 1 * D }).setOrigin(0.5, 0).setAlpha(o.sold ? 0.4 : 1);
+      k.add([ig, name, desc]);
+      const bh = Math.min(38 * D, cardH * 0.15);
+      if (o.sold) {
+        k.add(this.add.text(x + cardW / 2, cy0 + cardH - bh * 0.8, 'Alındı ✓', { fontFamily: FONT, fontSize: fs + 'px', fontStyle: '700', color: '#7fe3a5' }).setOrigin(0.5));
+      } else {
+        const can = state.res.money >= it.cost;
+        const b = makeButton(this, x + cardW / 2, cy0 + cardH - bh * 0.8, cardW - 16 * D, bh, `${it.cost} ●`, can ? BTN_GO : { base: 0x3a4466, dark: 0x252d47, text: '#8e97b8' }, () => this.buy(n));
+        k.add(b);
+      }
+    });
+    const by = cy0 + cardH + 34 * D, bw = (cw - gap) / 2, bh = Math.min(48 * D, H * 0.065);
+    const rc = RULES.rerollCost + (state.rerolls || 0);
+    const rb = makeButton(this, pad + bw / 2, by, bw, bh, `↻ Yenile ${rc}●`, { base: 0x8fb4ff, dark: 0x3e62b0, text: '#0d1a33' }, () => this.reroll());
+    rb.setAlpha(state.res.money >= rc ? 1 : 0.5);
+    const cb = makeButton(this, W - pad - bw / 2, by, bw, bh, 'Devam  ▶', BTN_BRASS, () => this.closeShop());
+    const inv = this.add.text(W / 2, by + bh * 0.9, 'Modülü aldıktan sonra takacağın makineye dokun.', { fontFamily: FONT, fontSize: Math.round(fs * 0.9) + 'px', fontStyle: '500', color: C.dim, align: 'center', wordWrap: { width: cw } }).setOrigin(0.5, 0);
+    k.add([rb, cb, inv]);
+    this.shop = k;
+    this.banner.setVisible(false);
+  }
+  closeShop() {
+    if (this.shop) { this.shop.destroy(); this.shop = null; }
+    state.shopOpen = false;
+    sfx.pick();
+    this.refreshPhase();
+  }
+  reroll() {
+    const rc = RULES.rerollCost + (state.rerolls || 0);
+    if (state.res.money < rc) { this.cameras.main.shake(80, 0.004); sfx.bad(); return; }
+    state.res.money -= rc; state.rerolls = (state.rerolls || 0) + 1;
+    this.rollOffers(); sfx.tap();
+    this.openShop();
+  }
+  buy(n) {
+    const o = state.offers[n], it = SHOP[o.key];
+    if (o.sold) return;
+    if (state.res.money < it.cost) { this.cameras.main.shake(80, 0.004); sfx.bad(); return; }
+    state.res.money -= it.cost; o.sold = true;
+    [660, 880].forEach((f, k) => setTimeout(() => beep(f, 0.08, 'triangle', 0.15), k * 70)); buzz(20);
+    if (o.key === 'place') { state.places += 1; this.openShop(); }
+    else if (o.key === 'ice') {
+      state.heat = state.heat.map(() => 0);
+      this.cells.forEach((v, i) => { if (v) { const c = this.cellCenter(i); this.sparks.explode(6, c.x, c.y); } });
+      this.openShop();
+    } else {
+      // modül: dükkanı kapat, makine seçtir
+      if (this.shop) { this.shop.destroy(); this.shop = null; }
+      this.pickMod = o.key;
+      this.setBanner(`${it.name}: bir makineye dokun`, it.desc, it.color);
+      this.infoUntil = this.time.now + 1e9;
+    }
+    this.updateHud(true);
+  }
+  attachMod(i) {
+    const key = this.pickMod, it = SHOP[key];
+    state.mod[i] = key;
+    this.pickMod = null; this.infoUntil = 0;
+    const c = this.cellCenter(i);
+    this.sparks.explode(18, c.x, c.y); sfx.place();
+    const v = this.cells[i];
+    this.tweens.add({ targets: v, scale: 1.12, duration: 90, yoyo: true });
+    this.flashTip(`${it.name} takıldı`, key === 'ring' ? 'Turuncu karelerdeki komşular daha hızlı çalışır ama daha çok ısınır.' : 'Bu makine artık daha yavaş ısınır.', it.color, 2500);
+    this.time.delayedCall(700, () => { if (state.phase === 'build' && state.shopOpen) this.openShop(); });
+  }
+  drawMods(g) {
+    // modül rozetleri (sol üst köşe) ve Halka etki alanı
+    const s = this.cell;
+    state.grid.forEach((t, i) => {
+      const m = t && state.mod[i]; if (!m || !this.cells[i]) return;
+      const c = this.cellCenter(i);
+      if (m === 'ring' && state.phase === 'build') {
+        for (let d = 0; d < 4; d++) {
+          const j = this.nb(i, d); if (j < 0) continue;
+          const x = this.gx + (j % COLS) * s, y = this.gy + Math.floor(j / COLS) * s, gap = Math.max(2, s * 0.04);
+          this.linkG.fillStyle(0xffa040, 0.13).fillRoundedRect(x + gap, y + gap, s - gap * 2, s - gap * 2, s * 0.14);
+        }
+      }
+      g.fillStyle(0x0b0f1c, 0.92).fillCircle(c.x - s * 0.34, c.y - s * 0.34, s * 0.16);
+      this.drawShopIcon(g, m, c.x - s * 0.34, c.y - s * 0.34, s * 0.125);
+    });
+  }
+
   // ---------- açıklama kartı ----------
   setBanner(title, body, accent) {
     const { w, h } = this.bannerSize, g = this.bannerG;
@@ -629,6 +783,8 @@ class Build extends Phaser.Scene {
 
   startRound() {
     if (state.phase !== 'build') return;
+    if (this.pickMod) { this.cameras.main.shake(80, 0.004); sfx.bad(); return; }
+    state.shopOpen = false;
     if (!state.grid.some(Boolean)) { this.cameras.main.shake(80, 0.004); sfx.bad(); return; }
     state.phase = 'run';
     state.time = RULES.roundTime;
@@ -776,7 +932,9 @@ class Build extends Phaser.Scene {
       state.time = RULES.roundTime;
       state.result = null;
       this.resultBox.destroy();
+      state.offers = null; state.rerolls = 0; state.shopOpen = true;
       this.refreshPhase();
+      this.openShop();
       if (state.pressure >= 30 && !state.ventTaught) {
         state.ventTaught = true;
         this.flashTip('Fabrika sıcak mı? Soğut!', `Mavi ❄ Soğut düğmesi ${RULES.ventCost} ● karşılığında tüm makinelerin ısısını %${Math.round(RULES.ventCool * 100)} düşürür.`, 0x8fb4ff, 6000);
@@ -913,6 +1071,7 @@ class Build extends Phaser.Scene {
     this.portL.clear();
     if (state.phase !== 'build' && state.phase !== 'run') return;
     state.grid.forEach((t, i) => { if (t && this.cells[i]) this.drawPorts(this.portL, i); });
+    this.drawMods(this.portL);
     const s = this.cell, gap = Math.max(2, s * 0.04);
     const cellRect = (j) => ({ x: this.gx + (j % COLS) * s, y: this.gy + Math.floor(j / COLS) * s });
     state.grid.forEach((t, i) => {
@@ -953,6 +1112,8 @@ class Build extends Phaser.Scene {
         if (v.stalled) rate *= RULES.idleHeat;
         if (v.type !== 'fan' && this.cooled(i)) rate *= RULES.fanCool;
         if (v.boost && state.time > v.boost.until) rate *= 1.25;
+        if (this.hasRingNear(i)) rate *= RULES.ringHeat;
+        if (state.mod[i] === 'plate') rate *= RULES.plateHeat;
         h = Math.min(1, h + rate * dt);
         state.heat[i] = h;
       }
@@ -1083,9 +1244,10 @@ class Build extends Phaser.Scene {
     v.alert = a;
   }
 
-  speedOf(v) {
+  speedOf(v, i) {
     if (v.svc === 'broken') return 0;
     let m = 1;
+    if (this.hasRingNear(i)) m *= RULES.ringSpeed;
     if (v.boost && state.time > v.boost.until) m *= v.boost.mult; // süre geri sayıyor: time > until iken aktif
     return m;
   }
@@ -1344,7 +1506,7 @@ class Build extends Phaser.Scene {
     ['crank', 'press', 'mint'].forEach(type => {
       this.cells.forEach((v, i) => {
         if (!v || v.type !== type) return;
-        v.t = (v.t || 0) + dt * this.speedOf(v);
+        v.t = (v.t || 0) + dt * this.speedOf(v, i);
         const every = PROD[type].every;
         if (v.t >= every) { v.t -= every; this.produce(i, v); }
         v.setAlpha(v.svc === 'broken' ? 0.45 : (v.stalled === 'power' || v.stalled === 'blocked') ? 0.6 : 1);
@@ -1423,7 +1585,7 @@ class Build extends Phaser.Scene {
 
   // ---------- dokunma ----------
   onDown(p) {
-    if (this.dialog) return;
+    if (this.dialog || this.shop) return;
     if (state.phase === 'end' || state.phase === 'boom') return;
     if (this.mg) { const f = this['mgDown_' + this.mg.type]; if (f) f.call(this, this.mg, p); return; }
     if (state.phase === 'build' && state.places > 0 && p.y > this.slotTop) {
@@ -1449,8 +1611,8 @@ class Build extends Phaser.Scene {
     this.tweens.add({ targets: ghost, angle: { from: -4, to: 4 }, duration: 260, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     this.drag = { type, from, ghost, rot: null, heat: 0 };
     if (from >= 0) {
-      this.drag.rot = state.rot[from]; this.drag.heat = state.heat[from] || 0;
-      state.rot[from] = null; state.heat[from] = 0;
+      this.drag.rot = state.rot[from]; this.drag.heat = state.heat[from] || 0; this.drag.mod = state.mod[from];
+      state.rot[from] = null; state.heat[from] = 0; state.mod[from] = null;
       this.setAlert(this.cells[from], null);
       this.cells[from].destroy();
       this.cells[from] = null;
@@ -1463,7 +1625,7 @@ class Build extends Phaser.Scene {
   }
 
   onMove(p) {
-    if (this.dialog) return;
+    if (this.dialog || this.shop) return;
     if (this.mg) { const f = this['mgMove_' + this.mg.type]; if (f) f.call(this, this.mg, p); return; }
     if (this.pending && !this.drag) {
       // makineler yalnızca inşa evresinde taşınır
@@ -1492,7 +1654,7 @@ class Build extends Phaser.Scene {
   }
 
   onUp(p) {
-    if (this.dialog) return;
+    if (this.dialog || this.shop) return;
     if (this.mg) { const f = this['mgUp_' + this.mg.type]; if (f) f.call(this, this.mg, p); return; }
     if (this.pending && !this.drag) {
       const i = this.pending.i, v = this.cells[i];
@@ -1506,6 +1668,7 @@ class Build extends Phaser.Scene {
           if ((state.heat[i] || 0) >= RULES.tapAt) this.openMinigame(i);
           else this.flashTip('Henüz soğuk', 'Isı çubuğu dolmaya başlayınca bakım yapabilirsin. ! çıkınca acele et.', MACHINES[v.type].color, 1800);
         }
+        if (state.phase === 'build' && this.pickMod) { this.attachMod(i); return; }
         if (state.phase === 'build') {
           // dokununca döndür
           state.rot[i] = (this.rotOf(i) + 1) % 4;
@@ -1518,7 +1681,7 @@ class Build extends Phaser.Scene {
     }
     if (!this.drag) return;
     const { type, from, ghost } = this.drag;
-    this.drag_rot = this.drag.rot; this.drag_heat = this.drag.heat;
+    this.drag_rot = this.drag.rot; this.drag_heat = this.drag.heat; this.drag_mod = this.drag.mod || null;
     this.drag = null;
     this.tweens.killTweensOf(ghost);
     this.hl.clear();
@@ -1530,7 +1693,7 @@ class Build extends Phaser.Scene {
     if (i >= 0 && !state.grid[i]) {
       ghost.destroy();
       state.grid[i] = type;
-      state.rot[i] = this.drag_rot; state.heat[i] = this.drag_heat;
+      state.rot[i] = this.drag_rot; state.heat[i] = this.drag_heat; state.mod[i] = from >= 0 ? this.drag_mod : null;
       if (from < 0) state.places--;
       this.spawnCell(i, type, true);
       sfx.place();
@@ -1542,7 +1705,7 @@ class Build extends Phaser.Scene {
     } else if (from >= 0) {
       ghost.destroy();
       state.grid[from] = type;
-      state.rot[from] = this.drag_rot; state.heat[from] = this.drag_heat;
+      state.rot[from] = this.drag_rot; state.heat[from] = this.drag_heat; state.mod[from] = this.drag_mod;
       this.spawnCell(from, type, false);
       this.cameras.main.shake(80, 0.004);
       sfx.bad();
