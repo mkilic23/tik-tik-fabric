@@ -134,87 +134,134 @@ function gauge(g, x, y, r, m) {
 }
 
 // ---------- makine çizimi ----------
+// Her tür ayrı siluet ve renkte; k.tick(dt, hız) türe özel hareketi oynatır.
 function drawMachine(scene, type, s, withShadow = true) {
-  const m = MACHINES[type];
+  const m = MACHINES[type], B = BODY[type];
   const k = scene.add.container(0, 0);
   const g = scene.add.graphics();
-  const r = s * 0.16;
-  const h = s * 0.88;          // gövde yüksekliği
-  const top = -s / 2;
-  const depth = s * 0.08;      // 3B kalınlık
+  const dep = s * 0.07;
+  const box = (x, y, w, h, r) => {
+    g.fillStyle(B.dark, 1).fillRoundedRect(x, y + dep, w, h, r);
+    g.fillStyle(B.mid, 1).fillRoundedRect(x, y, w, h, r);
+    g.fillStyle(B.base, 1).fillRoundedRect(x + w * 0.03, y + h * 0.03, w * 0.94, h * 0.8, r * 0.85);
+    g.fillStyle(B.hi, 0.5).fillRoundedRect(x + w * 0.08, y + h * 0.06, w * 0.84, Math.min(h * 0.12, s * 0.09), r * 0.5);
+  };
+  const label = (x, y, size) => {
+    const t = scene.add.text(x, y, m.sym, { fontFamily: FONT, fontSize: Math.round(size) + 'px', fontStyle: '700', color: '#0d1220' }).setOrigin(0.5);
+    return t;
+  };
+  if (withShadow) g.fillStyle(0x000000, 0.35).fillEllipse(0, s * 0.47, s * (type === 'mint' ? 1.05 : 0.9), s * 0.16);
+  const parts = [g];
+  let tick = () => {};
 
-  if (withShadow) g.fillStyle(0x000000, 0.35).fillEllipse(0, s * 0.47, s * 0.95, s * 0.16);
-
-  // arka parçalar (gövdenin arkasında kalan silüet)
-  if (type === 'press') {
-    g.fillStyle(C.copperDark, 1).fillRoundedRect(-s * 0.06, top - s * 0.08, s * 0.12, s * 0.2, s * 0.03);
-    g.fillStyle(C.brassDark, 1).fillRoundedRect(-s * 0.34, top - s * 0.14, s * 0.68, s * 0.12, s * 0.04);
-    g.fillStyle(C.brass, 1).fillRoundedRect(-s * 0.34, top - s * 0.16, s * 0.68, s * 0.1, s * 0.04);
-    g.fillStyle(C.brassHi, 0.7).fillRect(-s * 0.3, top - s * 0.15, s * 0.6, s * 0.02);
-  }
   if (type === 'crank') {
-    g.fillStyle(C.copperDark, 1).fillRoundedRect(s * 0.38, -s * 0.07, s * 0.2, s * 0.12, s * 0.03);
-    g.fillStyle(C.brassDark, 1).fillRoundedRect(s * 0.5, -s * 0.06, s * 0.06, s * 0.28, s * 0.03);
-    rivet(g, s * 0.53, s * 0.24, s * 0.075);
-  }
-  if (type === 'mint') {
-    g.fillStyle(C.copperDark, 1).fillRoundedRect(-s * 0.58, -s * 0.06, s * 0.18, s * 0.1, s * 0.03);
-    g.fillStyle(C.brassDark, 1).fillRoundedRect(-s * 0.56, -s * 0.42, s * 0.06, s * 0.42, s * 0.03);
-    rivet(g, -s * 0.53, -s * 0.42, s * 0.08);
-  }
-
-  // gövde: alt kalınlık + ana yüz + üst parlama
-  const B = BODY[type];
-  g.fillStyle(B.dark, 1).fillRoundedRect(-s / 2, top + depth, s, h, r);
-  g.fillStyle(B.mid, 1).fillRoundedRect(-s / 2, top, s, h, r);
-  g.fillStyle(B.base, 1).fillRoundedRect(-s / 2 + s * 0.03, top + s * 0.02, s * 0.94, h * 0.8, r * 0.85);
-  g.fillStyle(B.hi, 0.55).fillRoundedRect(-s / 2 + s * 0.07, top + s * 0.04, s * 0.86, s * 0.1, { tl: r * 0.7, tr: r * 0.7, bl: s * 0.02, br: s * 0.02 });
-  // panel çizgisi
-  g.fillStyle(B.mid, 1).fillRect(-s * 0.42, top + h * 0.83, s * 0.84, s * 0.02);
-
-  // makineye özgü ön yüz
-  const gy = top + h * 0.46;
-  if (type === 'fan') {
-    g.fillStyle(C.copperDark, 1).fillCircle(0, gy + s * 0.01, s * 0.34);
-    g.fillStyle(C.brass, 1).fillCircle(0, gy, s * 0.33);
-    g.fillStyle(C.brassHi, 0.5).fillCircle(-s * 0.08, gy - s * 0.1, s * 0.22);
-    g.fillStyle(C.brass, 1).fillCircle(0, gy, s * 0.29);
-    g.fillStyle(C.glass, 1).fillCircle(0, gy, s * 0.27);
-    g.fillStyle(m.dark, 0.45).fillCircle(0, gy, s * 0.25);
-  } else {
-    gauge(g, 0, gy, s * 0.2, m);
-  }
-  // perçinler
-  const rv = s * 0.04;
-  [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([x, y]) => rivet(g, x * s * 0.36, gy + y * h * 0.33, rv));
-  k.add(g);
-
-  if (type === 'fan') {
-    const blades = scene.add.graphics().setPosition(0, gy);
+    // dişli çark gövde + dönen kol
+    const cy = -s * 0.03, R = s * 0.44;
+    g.fillStyle(B.dark, 1).fillRoundedRect(-s * 0.3, s * 0.26, s * 0.6, s * 0.18, s * 0.05);   // ayak
+    g.fillStyle(B.mid, 1).fillRoundedRect(-s * 0.3, s * 0.24, s * 0.6, s * 0.15, s * 0.05);
+    const gear = scene.add.graphics().setPosition(0, cy);
+    const pts = [];
+    const N = 10;
+    for (let i = 0; i < N * 4; i++) {
+      const a = (i / (N * 4)) * Math.PI * 2, rr = (i % 4 < 2) ? R : R * 0.84;
+      pts.push(new Phaser.Math.Vector2(Math.cos(a) * rr, Math.sin(a) * rr));
+    }
+    gear.fillStyle(B.dark, 1).fillPoints(pts.map(p => new Phaser.Math.Vector2(p.x, p.y + dep * 0.7)), true);
+    gear.fillStyle(B.mid, 1).fillPoints(pts, true);
+    gear.fillStyle(B.base, 1).fillCircle(0, 0, R * 0.76);
+    gear.fillStyle(B.hi, 0.35).fillCircle(-R * 0.15, -R * 0.2, R * 0.5);
+    gear.fillStyle(0x10162a, 1).fillCircle(0, 0, R * 0.52);
+    for (let i = 0; i < 4; i++) { const a = i * Math.PI / 2; gear.lineStyle(s * 0.04, B.mid, 1).lineBetween(Math.cos(a) * R * 0.2, Math.sin(a) * R * 0.2, Math.cos(a) * R * 0.5, Math.sin(a) * R * 0.5); }
+    const arm = scene.add.graphics().setPosition(0, cy);
+    arm.lineStyle(s * 0.07, C.copperDark, 1).lineBetween(0, 0, R * 0.62, 0);
+    arm.fillStyle(C.copperDark, 1).fillCircle(R * 0.62, s * 0.012, s * 0.08);
+    arm.fillStyle(C.copperHi, 1).fillCircle(R * 0.62, 0, s * 0.075);
+    const hub = scene.add.graphics();
+    hub.fillStyle(C.brassDark, 1).fillCircle(0, cy + s * 0.01, s * 0.13);
+    hub.fillStyle(C.brass, 1).fillCircle(0, cy, s * 0.13);
+    parts.push(gear, arm, hub, label(0, cy, s * 0.15));
+    tick = (dt, sp) => { arm.rotation += dt * 0.006 * sp; gear.rotation += dt * 0.0012 * sp; };
+  } else if (type === 'press') {
+    // uzun kule + üstte iner kalkar piston
+    const x = -s * 0.33, w = s * 0.66, top = -s * 0.2, h = s * 0.62;
+    g.fillStyle(C.copperDark, 1).fillRect(-s * 0.4, -s * 0.5, s * 0.07, s * 0.36).fillRect(s * 0.33, -s * 0.5, s * 0.07, s * 0.36);
+    g.fillStyle(C.brassDark, 1).fillRoundedRect(-s * 0.46, -s * 0.54, s * 0.92, s * 0.12, s * 0.04);
+    g.fillStyle(C.brass, 1).fillRoundedRect(-s * 0.46, -s * 0.56, s * 0.92, s * 0.1, s * 0.04);
+    g.fillStyle(C.brassHi, 0.7).fillRect(-s * 0.42, -s * 0.55, s * 0.84, s * 0.02);
+    const piston = scene.add.graphics();
+    box(x, top, w, h, s * 0.1);
+    gauge(g, 0, top + h * 0.42, s * 0.17, m);
+    [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([a, b]) => rivet(g, a * s * 0.25, top + h * 0.42 + b * h * 0.3, s * 0.035));
+    parts.push(piston, label(0, top + h * 0.42, s * 0.19));
+    let ph = Math.random() * 6;
+    const drawP = (o) => {
+      piston.clear();
+      const hy = -s * 0.36 + o * s * 0.1;
+      piston.fillStyle(0xb9c2d6, 1).fillRect(-s * 0.04, -s * 0.44, s * 0.08, hy - (-s * 0.44));
+      piston.fillStyle(B.dark, 1).fillRoundedRect(-s * 0.2, hy + s * 0.02, s * 0.4, s * 0.1, s * 0.03);
+      piston.fillStyle(B.hi, 1).fillRoundedRect(-s * 0.2, hy, s * 0.4, s * 0.09, s * 0.03);
+    };
+    drawP(0);
+    tick = (dt, sp) => { ph += dt * 0.008 * sp; drawP(Math.pow(Math.max(0, Math.sin(ph)), 3)); };
+  } else if (type === 'mint') {
+    // yayvan kasa + üstte huni, huniye elmas düşer
+    const top = -s * 0.1, h = s * 0.52;
+    g.fillStyle(C.copperDark, 1).fillRoundedRect(-s * 0.6, top + s * 0.06, s * 0.14, s * 0.08, s * 0.03);
+    g.fillStyle(C.brassDark, 1).fillRoundedRect(-s * 0.58, top - s * 0.28, s * 0.05, s * 0.34, s * 0.02);
+    rivet(g, -s * 0.555, top - s * 0.28, s * 0.07);
+    // huni
+    g.fillStyle(B.dark, 1).fillPoints([[-s * 0.3, -s * 0.46], [s * 0.3, -s * 0.46], [s * 0.16, top + 2], [-s * 0.16, top + 2]].map(([a, b]) => new Phaser.Math.Vector2(a, b + dep * 0.6)), true);
+    g.fillStyle(B.mid, 1).fillPoints([[-s * 0.3, -s * 0.46], [s * 0.3, -s * 0.46], [s * 0.16, top + 2], [-s * 0.16, top + 2]].map(([a, b]) => new Phaser.Math.Vector2(a, b)), true);
+    g.fillStyle(0x10162a, 1).fillRoundedRect(-s * 0.26, -s * 0.47, s * 0.52, s * 0.06, s * 0.03);
+    box(-s * 0.5, top, s, h, s * 0.12);
+    gauge(g, -s * 0.1, top + h * 0.45, s * 0.15, m);
+    // çıkış oluğu
+    g.fillStyle(0x10162a, 1).fillRoundedRect(s * 0.16, top + h * 0.3, s * 0.26, s * 0.16, s * 0.04);
+    g.fillStyle(B.hi, 0.6).fillRect(s * 0.16, top + h * 0.3 + s * 0.13, s * 0.26, s * 0.03);
+    rivet(g, -s * 0.42, top + h * 0.2, s * 0.03); rivet(g, s * 0.42, top + h * 0.2, s * 0.03);
+    const gem = scene.add.graphics();
+    parts.push(label(-s * 0.1, top + h * 0.45, s * 0.15), gem);
+    let gt = Math.random();
+    tick = (dt, sp) => {
+      gt += dt * 0.0011 * sp; if (gt > 1) gt -= 1;
+      gem.clear();
+      const f = Math.min(1, gt / 0.6), y = -s * 0.78 + f * f * s * 0.34, r = s * 0.06, a = gt < 0.6 ? 1 : Math.max(0, 1 - (gt - 0.6) / 0.15);
+      if (a <= 0 || sp <= 0.01) return;
+      gem.fillStyle(0x1f8a93, a).fillTriangle(-r, y - r * 0.25, r, y - r * 0.25, 0, y + r);
+      gem.fillStyle(0x8ff0f5, a).fillTriangle(-r, y - r * 0.25, 0, y - r * 0.25, 0, y + r);
+      gem.fillStyle(0xc9fbff, a).fillTriangle(-r * 0.55, y - r * 0.7, r * 0.55, y - r * 0.7, 0, y - r * 0.25);
+    };
+  } else if (type === 'fan') {
+    // yuvarlak kafes + dönen pervane
+    const cy = -s * 0.05, R = s * 0.44;
+    g.fillStyle(B.dark, 1).fillRoundedRect(-s * 0.32, s * 0.28, s * 0.64, s * 0.16, s * 0.05);
+    g.fillStyle(B.mid, 1).fillRoundedRect(-s * 0.32, s * 0.26, s * 0.64, s * 0.14, s * 0.05);
+    g.fillStyle(B.mid, 1).fillRect(-s * 0.06, cy + R * 0.8, s * 0.12, s * 0.18);
+    g.fillStyle(B.dark, 1).fillCircle(0, cy + dep * 0.7, R);
+    g.fillStyle(B.mid, 1).fillCircle(0, cy, R);
+    g.fillStyle(B.base, 1).fillCircle(0, cy, R * 0.9);
+    g.fillStyle(B.hi, 0.4).fillCircle(-R * 0.25, cy - R * 0.3, R * 0.45);
+    g.fillStyle(0x10162a, 1).fillCircle(0, cy, R * 0.74);
+    g.fillStyle(m.dark, 0.45).fillCircle(0, cy, R * 0.7);
+    const blades = scene.add.graphics().setPosition(0, cy);
     for (let i = 0; i < 4; i++) {
       const a = (i / 4) * Math.PI * 2;
       const p = (ang, rad) => ({ x: Math.cos(ang) * rad, y: Math.sin(ang) * rad });
-      const a1 = p(a - 0.35, s * 0.23), a2 = p(a + 0.45, s * 0.23), a3 = p(a + 0.1, s * 0.06);
-      blades.fillStyle(m.color, 1).fillTriangle(0, 0, a1.x, a1.y, a2.x, a2.y);
-      blades.fillStyle(0xffffff, 0.25).fillTriangle(0, 0, a1.x, a1.y, a3.x, a3.y);
+      const a1 = p(a - 0.35, R * 0.66), a2 = p(a + 0.45, R * 0.66), a3 = p(a + 0.1, R * 0.15);
+      blades.fillStyle(0xdfe9ff, 1).fillTriangle(0, 0, a1.x, a1.y, a2.x, a2.y);
+      blades.fillStyle(0xffffff, 0.35).fillTriangle(0, 0, a1.x, a1.y, a3.x, a3.y);
     }
-    blades.fillStyle(C.brass, 1).fillCircle(0, 0, s * 0.06);
-    blades.fillStyle(C.brassHi, 0.9).fillCircle(-s * 0.015, -s * 0.015, s * 0.025);
-    k.add(blades);
-    // kafes
+    blades.fillStyle(C.brass, 1).fillCircle(0, 0, s * 0.07);
     const cage = scene.add.graphics();
-    cage.lineStyle(Math.max(1, s * 0.012), C.brassDark, 0.7);
-    cage.strokeCircle(0, gy, s * 0.17);
-    cage.lineBetween(-s * 0.26, gy, s * 0.26, gy);
-    cage.lineBetween(0, gy - s * 0.26, 0, gy + s * 0.26);
-    k.add(cage);
+    cage.lineStyle(Math.max(1, s * 0.016), B.hi, 0.7);
+    cage.strokeCircle(0, cy, R * 0.45); cage.strokeCircle(0, cy, R * 0.72);
+    for (let i = 0; i < 4; i++) { const a = i * Math.PI / 4; cage.lineBetween(Math.cos(a) * R * 0.74, cy + Math.sin(a) * R * 0.74, -Math.cos(a) * R * 0.74, cy - Math.sin(a) * R * 0.74); }
+    parts.push(blades, cage);
     k.blades = blades;
-  } else {
-    const label = scene.add.text(0, gy - s * 0.01, m.sym, {
-      fontFamily: FONT, fontSize: Math.round(s * 0.22) + 'px', fontStyle: '700', color: '#0d1220',
-    }).setOrigin(0.5);
-    k.add(label);
+    tick = (dt, sp) => { blades.rotation += dt * 0.012 * sp; };
   }
+  k.add(parts);
+  k.tick = tick;
   k.type = type;
   return k;
 }
@@ -1601,8 +1648,13 @@ class Build extends Phaser.Scene {
 
   update(_, dtMs) {
     const dt = dtMs / 1000;
-    this.cells.forEach(v => { if (v && v.blades) v.blades.rotation += dtMs * (state.phase === 'run' && v.svc !== 'broken' ? 0.012 : 0.004); });
-    this.slots.forEach(s => { if (s.vis.blades) s.vis.blades.rotation += dtMs * 0.003; });
+    // türe özel hareket: çalışan makine hızlı, inşada yavaş, duran makine hareketsiz
+    this.cells.forEach(v => {
+      if (!v || !v.tick) return;
+      const sp = state.phase === 'run' ? (v.svc === 'broken' || v.stalled === 'power' || v.stalled === 'blocked' || this.mg || this.dialog ? 0 : 1) : state.phase === 'build' ? 0.25 : 0;
+      v.tick(dtMs, sp);
+    });
+    this.slots.forEach(s => { if (s.vis.tick) s.vis.tick(dtMs, 0.25); });
     this.drawDanger(dtMs);
     this.cells.forEach((v, i) => { if (v) this.drawHeat(v, i); });
     this.drawLinks();
