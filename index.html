@@ -1,9 +1,10 @@
 <title>Tık Tık Fabric</title>
 <meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&display=swap">
 <style>
   /* Tek ekranlık oyun: tuval tüm alanı kaplar, tek koyu tema (bilinçli seçim). */
   :root {
-    --bg: #141a2e;
+    --bg: #121829;
     --fg: #f3e9d8;
     color-scheme: dark;
   }
@@ -19,30 +20,38 @@
   }
   #game {
     position: fixed;
-    inset: 0;
-    padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+    top: env(safe-area-inset-top, 0px);
+    right: env(safe-area-inset-right, 0px);
+    bottom: env(safe-area-inset-bottom, 0px);
+    left: env(safe-area-inset-left, 0px);
   }
   #game canvas { display: block; }
 </style>
 <div id="game"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.80.1/phaser.min.js"></script>
 <script>
-// Tık Tık Fabric — Adım 1: ızgara ve makine yerleştirme
+// Tık Tık Fabric — Adım 1 (+ görsel cila): ızgara ve makine yerleştirme
+// Tüm çizim cihazın gerçek piksel yoğunluğunda yapılır (D = devicePixelRatio), böylece keskin görünür.
 
+const D = Math.min(window.devicePixelRatio || 1, 3);
 const COLS = 5, ROWS = 6;
 const C = {
-  bg: 0x141a2e, panel: 0x1d2540, cell: 0x232c4a, cellLine: 0x2f3a60,
+  bgTop: 0x1a2340, bgBot: 0x0e1322,
+  well: 0x0b0f1c, cell: 0x1c2440, cellHi: 0x2a3456, cellLo: 0x121829,
+  panel: 0x1b2238, panelHi: 0x2c3654,
   ok: 0x5fd38a, bad: 0xe0564a,
-  copper: 0xc8743a, copperDark: 0x7a3f1d, brass: 0xe0b450, spark: 0xffd84a,
-  cream: '#f3e9d8', dim: '#8b93b0', faint: '#4a5272',
+  copperHi: 0xf0a76a, copper: 0xcf7a3e, copperMid: 0xb4622c, copperDark: 0x6e3518,
+  brassHi: 0xfbe3a0, brass: 0xe0b450, brassDark: 0x9a7424,
+  glass: 0x0d1220, spark: 0xffd84a,
+  cream: '#f6ecdb', dim: '#8e97b8', faint: '#4a5272',
 };
-const FONT = 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
+const FONT = '"Fredoka", system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
 
 const MACHINES = {
-  crank: { name: 'Krank',  makes: '⚡ Enerji',   color: 0x4fd6e0 },
-  press: { name: 'Pres',   makes: '✦ Kıvılcım', color: 0xffd84a },
-  mint:  { name: 'Basıcı', makes: '● Para',     color: 0x7fd47a },
-  fan:   { name: 'Fan',    makes: '❄ Soğutur',  color: 0x8fb4ff },
+  crank: { name: 'Krank',  sym: '⚡', color: 0x4fd6e0, dark: 0x1f8a93 },
+  press: { name: 'Pres',   sym: '✦', color: 0xffd84a, dark: 0xb88a12 },
+  mint:  { name: 'Basıcı', sym: '●', color: 0x7fd47a, dark: 0x3d8a3a },
+  fan:   { name: 'Fan',    sym: '',  color: 0x8fb4ff, dark: 0x3e62b0 },
 };
 const ORDER = ['crank', 'press', 'mint', 'fan'];
 
@@ -74,51 +83,105 @@ const sfx = {
   trash: () => { beep(300, 0.18, 'sawtooth', 0.1); buzz(25); },
 };
 
+// ---------- çizim yardımcıları ----------
+function rivet(g, x, y, r) {
+  g.fillStyle(C.brassDark, 1).fillCircle(x, y + r * 0.25, r);
+  g.fillStyle(C.brass, 1).fillCircle(x, y, r);
+  g.fillStyle(C.brassHi, 0.9).fillCircle(x - r * 0.3, y - r * 0.3, r * 0.4);
+}
+function gauge(g, x, y, r, m) {
+  g.fillStyle(C.brassDark, 1).fillCircle(x, y + r * 0.08, r * 1.18);
+  g.fillStyle(C.brass, 1).fillCircle(x, y, r * 1.18);
+  g.fillStyle(C.brassHi, 0.6).fillCircle(x - r * 0.25, y - r * 0.35, r * 0.85);
+  g.fillStyle(C.brass, 1).fillCircle(x, y, r * 1.0);
+  g.fillStyle(C.glass, 1).fillCircle(x, y, r * 0.92);
+  g.fillStyle(m.dark, 1).fillCircle(x, y, r * 0.78);
+  g.fillStyle(m.color, 1).fillCircle(x, y - r * 0.05, r * 0.7);
+  // cam parlaması
+  g.fillStyle(0xffffff, 0.35).fillEllipse(x - r * 0.25, y - r * 0.38, r * 0.7, r * 0.32);
+}
+
 // ---------- makine çizimi ----------
-function drawMachine(scene, type, s) {
+function drawMachine(scene, type, s, withShadow = true) {
   const m = MACHINES[type];
   const k = scene.add.container(0, 0);
   const g = scene.add.graphics();
-  const r = s * 0.14;
-  // gövde
-  g.fillStyle(C.copperDark, 1).fillRoundedRect(-s / 2, -s / 2 + s * 0.05, s, s, r);
-  g.fillStyle(C.copper, 1).fillRoundedRect(-s / 2, -s / 2, s, s * 0.95, r);
-  // her makineye kendi silüeti
-  g.fillStyle(C.copperDark, 1);
-  if (type === 'crank') {           // yanda krank kolu
-    g.fillRect(s * 0.3, -s * 0.06, s * 0.28, s * 0.12);
-    g.fillStyle(C.brass, 1).fillCircle(s * 0.56, 0, s * 0.09);
-  } else if (type === 'press') {    // üstte pres plakası
-    g.fillRect(-s * 0.36, -s * 0.44, s * 0.72, s * 0.14);
-    g.fillRect(-s * 0.05, -s * 0.32, s * 0.1, s * 0.12);
-  } else if (type === 'mint') {     // yanda kol
-    g.fillRect(-s * 0.5, -s * 0.36, s * 0.1, s * 0.5);
-    g.fillStyle(C.brass, 1).fillCircle(-s * 0.45, -s * 0.38, s * 0.08);
-  } else if (type === 'fan') {      // pervane halkası
-    g.lineStyle(s * 0.05, C.copperDark, 1).strokeCircle(0, 0, s * 0.34);
+  const r = s * 0.16;
+  const h = s * 0.88;          // gövde yüksekliği
+  const top = -s / 2;
+  const depth = s * 0.08;      // 3B kalınlık
+
+  if (withShadow) g.fillStyle(0x000000, 0.35).fillEllipse(0, s * 0.47, s * 0.95, s * 0.16);
+
+  // arka parçalar (gövdenin arkasında kalan silüet)
+  if (type === 'press') {
+    g.fillStyle(C.copperDark, 1).fillRoundedRect(-s * 0.06, top - s * 0.08, s * 0.12, s * 0.2, s * 0.03);
+    g.fillStyle(C.brassDark, 1).fillRoundedRect(-s * 0.34, top - s * 0.14, s * 0.68, s * 0.12, s * 0.04);
+    g.fillStyle(C.brass, 1).fillRoundedRect(-s * 0.34, top - s * 0.16, s * 0.68, s * 0.1, s * 0.04);
+    g.fillStyle(C.brassHi, 0.7).fillRect(-s * 0.3, top - s * 0.15, s * 0.6, s * 0.02);
   }
-  // gösterge camı
-  g.fillStyle(0x10162a, 1).fillCircle(0, s * 0.02, s * 0.24);
-  g.fillStyle(m.color, 1).fillCircle(0, s * 0.02, s * 0.19);
-  // vidalar
-  g.fillStyle(C.copperDark, 1);
-  [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([x, y]) => g.fillCircle(x * s * 0.37, y * s * 0.35, s * 0.035));
-  k.add(g);
+  if (type === 'crank') {
+    g.fillStyle(C.copperDark, 1).fillRoundedRect(s * 0.38, -s * 0.07, s * 0.2, s * 0.12, s * 0.03);
+    g.fillStyle(C.brassDark, 1).fillRoundedRect(s * 0.5, -s * 0.06, s * 0.06, s * 0.28, s * 0.03);
+    rivet(g, s * 0.53, s * 0.24, s * 0.075);
+  }
+  if (type === 'mint') {
+    g.fillStyle(C.copperDark, 1).fillRoundedRect(-s * 0.58, -s * 0.06, s * 0.18, s * 0.1, s * 0.03);
+    g.fillStyle(C.brassDark, 1).fillRoundedRect(-s * 0.56, -s * 0.42, s * 0.06, s * 0.42, s * 0.03);
+    rivet(g, -s * 0.53, -s * 0.42, s * 0.08);
+  }
+
+  // gövde: alt kalınlık + ana yüz + üst parlama
+  g.fillStyle(C.copperDark, 1).fillRoundedRect(-s / 2, top + depth, s, h, r);
+  g.fillStyle(C.copperMid, 1).fillRoundedRect(-s / 2, top, s, h, r);
+  g.fillStyle(C.copper, 1).fillRoundedRect(-s / 2 + s * 0.03, top + s * 0.02, s * 0.94, h * 0.8, r * 0.85);
+  g.fillStyle(C.copperHi, 0.55).fillRoundedRect(-s / 2 + s * 0.07, top + s * 0.04, s * 0.86, s * 0.1, { tl: r * 0.7, tr: r * 0.7, bl: s * 0.02, br: s * 0.02 });
+  // panel çizgisi
+  g.fillStyle(C.copperMid, 1).fillRect(-s * 0.42, top + h * 0.83, s * 0.84, s * 0.02);
+
+  // makineye özgü ön yüz
+  const gy = top + h * 0.46;
   if (type === 'fan') {
-    const blades = scene.add.graphics();
-    blades.fillStyle(0x10162a, 0.55);
-    for (let i = 0; i < 3; i++) {
-      const a = (i / 3) * Math.PI * 2;
-      blades.fillTriangle(0, s * 0.02, Math.cos(a) * s * 0.18, s * 0.02 + Math.sin(a) * s * 0.18,
-        Math.cos(a + 0.7) * s * 0.18, s * 0.02 + Math.sin(a + 0.7) * s * 0.18);
-    }
-    k.add(blades);
-    k.blades = blades;
+    g.fillStyle(C.copperDark, 1).fillCircle(0, gy + s * 0.01, s * 0.34);
+    g.fillStyle(C.brass, 1).fillCircle(0, gy, s * 0.33);
+    g.fillStyle(C.brassHi, 0.5).fillCircle(-s * 0.08, gy - s * 0.1, s * 0.22);
+    g.fillStyle(C.brass, 1).fillCircle(0, gy, s * 0.29);
+    g.fillStyle(C.glass, 1).fillCircle(0, gy, s * 0.27);
+    g.fillStyle(m.dark, 0.45).fillCircle(0, gy, s * 0.25);
+  } else {
+    gauge(g, 0, gy, s * 0.2, m);
   }
-  const label = scene.add.text(0, s * 0.02, m.makes.split(' ')[0], {
-    fontFamily: FONT, fontSize: Math.round(s * 0.26) + 'px', fontStyle: '900', color: '#10162a',
-  }).setOrigin(0.5);
-  if (type !== 'fan') k.add(label);
+  // perçinler
+  const rv = s * 0.04;
+  [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([x, y]) => rivet(g, x * s * 0.36, gy + y * h * 0.33, rv));
+  k.add(g);
+
+  if (type === 'fan') {
+    const blades = scene.add.graphics().setPosition(0, gy);
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2;
+      const p = (ang, rad) => ({ x: Math.cos(ang) * rad, y: Math.sin(ang) * rad });
+      const a1 = p(a - 0.35, s * 0.23), a2 = p(a + 0.45, s * 0.23), a3 = p(a + 0.1, s * 0.06);
+      blades.fillStyle(m.color, 1).fillTriangle(0, 0, a1.x, a1.y, a2.x, a2.y);
+      blades.fillStyle(0xffffff, 0.25).fillTriangle(0, 0, a1.x, a1.y, a3.x, a3.y);
+    }
+    blades.fillStyle(C.brass, 1).fillCircle(0, 0, s * 0.06);
+    blades.fillStyle(C.brassHi, 0.9).fillCircle(-s * 0.015, -s * 0.015, s * 0.025);
+    k.add(blades);
+    // kafes
+    const cage = scene.add.graphics();
+    cage.lineStyle(Math.max(1, s * 0.012), C.brassDark, 0.7);
+    cage.strokeCircle(0, gy, s * 0.17);
+    cage.lineBetween(-s * 0.26, gy, s * 0.26, gy);
+    cage.lineBetween(0, gy - s * 0.26, 0, gy + s * 0.26);
+    k.add(cage);
+    k.blades = blades;
+  } else {
+    const label = scene.add.text(0, gy - s * 0.01, m.sym, {
+      fontFamily: FONT, fontSize: Math.round(s * 0.22) + 'px', fontStyle: '700', color: '#0d1220',
+    }).setOrigin(0.5);
+    k.add(label);
+  }
   k.type = type;
   return k;
 }
@@ -130,30 +193,41 @@ class Build extends Phaser.Scene {
     const W = this.scale.width, H = this.scale.height;
     this.W = W; this.H = H;
 
-    const pad = 16;
-    const trayH = Math.min(H * 0.2, 150);
-    const topH = Math.min(H * 0.1, 70);
+    const pad = 16 * D;
+    const trayH = Math.min(H * 0.21, 160 * D);
+    const topH = Math.min(H * 0.09, 64 * D);
     this.cell = Math.floor(Math.min((W - pad * 2) / COLS, (H - topH - trayH - pad * 2) / ROWS));
     this.gx = Math.round((W - this.cell * COLS) / 2);
     this.gy = Math.round(topH + pad + Math.max(0, (H - topH - trayH - pad * 2 - this.cell * ROWS) / 2));
 
-    // sparks texture
+    // arka plan: dikey degrade + ince perçinli plaka çizgileri
+    const bg = this.add.graphics();
+    bg.fillGradientStyle(C.bgTop, C.bgTop, C.bgBot, C.bgBot, 1).fillRect(0, 0, W, H);
+    bg.lineStyle(1 * D, 0xffffff, 0.03);
+    for (let y = 0; y < H; y += 48 * D) bg.lineBetween(0, y, W, y);
+
+    // kıvılcım dokusu
     if (!this.textures.exists('spark')) {
       const t = this.make.graphics({ add: false });
-      t.fillStyle(0xffffff, 1).fillCircle(4, 4, 4);
-      t.generateTexture('spark', 8, 8); t.destroy();
+      t.fillStyle(0xffffff, 1).fillCircle(8, 8, 8);
+      t.generateTexture('spark', 16, 16); t.destroy();
     }
     this.sparks = this.add.particles(0, 0, 'spark', {
-      speed: { min: 80, max: 260 }, angle: { min: 0, max: 360 }, lifespan: 420,
-      scale: { start: 1.2, end: 0 }, tint: [C.spark, C.brass], gravityY: 400, emitting: false,
+      speed: { min: 80 * D, max: 260 * D }, angle: { min: 200, max: 340 }, lifespan: 450,
+      scale: { start: 0.55 * D, end: 0 }, tint: [C.spark, C.brassHi, 0xffffff], gravityY: 700 * D,
+      blendMode: 'ADD', emitting: false,
     }).setDepth(50);
 
     // başlık
+    const titleSize = Math.round(Math.min(W * 0.065, 28 * D));
+    this.add.text(pad, topH / 2 + 2 * D, 'TIK TIK FABRIC', {
+      fontFamily: FONT, fontSize: titleSize + 'px', fontStyle: '700', color: '#6e3518',
+    }).setOrigin(0, 0.5);
     this.add.text(pad, topH / 2, 'TIK TIK FABRIC', {
-      fontFamily: FONT, fontSize: Math.round(Math.min(W * 0.06, 26)) + 'px', fontStyle: '900', color: C.cream,
+      fontFamily: FONT, fontSize: titleSize + 'px', fontStyle: '700', color: '#f0a76a',
     }).setOrigin(0, 0.5);
     this.countText = this.add.text(W - pad, topH / 2, '', {
-      fontFamily: FONT, fontSize: Math.round(Math.min(W * 0.038, 16)) + 'px', color: C.dim,
+      fontFamily: FONT, fontSize: Math.round(Math.min(W * 0.04, 16 * D)) + 'px', fontStyle: '500', color: C.dim,
     }).setOrigin(1, 0.5);
 
     // ızgara
@@ -165,30 +239,32 @@ class Build extends Phaser.Scene {
     // alt tepsi
     const trayY = H - trayH;
     this.trayTop = trayY;
-    this.add.rectangle(0, trayY, W, trayH, C.panel).setOrigin(0);
-    this.hint = this.add.text(W / 2, trayY + 14, 'Makineyi sürükleyip ızgaraya bırak', {
-      fontFamily: FONT, fontSize: Math.round(Math.min(W * 0.036, 15)) + 'px', color: C.dim,
+    const tray = this.add.graphics();
+    tray.fillStyle(C.panel, 1).fillRect(0, trayY, W, trayH);
+    tray.fillStyle(C.panelHi, 1).fillRect(0, trayY, W, 2 * D);
+    tray.fillStyle(0x000000, 0.25).fillRect(0, trayY - 6 * D, W, 6 * D);
+    this.hint = this.add.text(W / 2, trayY + 12 * D, 'Makineyi sürükleyip ızgaraya bırak', {
+      fontFamily: FONT, fontSize: Math.round(Math.min(W * 0.037, 15 * D)) + 'px', fontStyle: '500', color: C.dim,
     }).setOrigin(0.5, 0);
 
     const slotW = (W - pad * 2) / ORDER.length;
-    const icon = Math.min(slotW * 0.62, trayH * 0.42);
+    const icon = Math.min(slotW * 0.6, trayH * 0.4);
     this.slots = ORDER.map((type, i) => {
       const x = pad + slotW * i + slotW / 2;
       const y = trayY + trayH * 0.5;
       const vis = drawMachine(this, type, icon).setPosition(x, y);
       this.add.text(x, y + icon * 0.62, MACHINES[type].name, {
-        fontFamily: FONT, fontSize: Math.round(Math.min(W * 0.034, 14)) + 'px', fontStyle: '700', color: C.cream,
+        fontFamily: FONT, fontSize: Math.round(Math.min(W * 0.036, 15 * D)) + 'px', fontStyle: '700', color: C.cream,
       }).setOrigin(0.5, 0);
       return { type, x, y, r: slotW / 2, vis };
     });
 
-    // kaldırma bölgesi göstergesi (sürüklerken)
+    // kaldırma bölgesi (sürüklerken görünür)
+    this.trashBg = this.add.rectangle(0, trayY, W, trayH, 0x3a1d22, 0.94).setOrigin(0).setDepth(19).setVisible(false);
     this.trashText = this.add.text(W / 2, trayY + trayH / 2, '✕  Kaldırmak için buraya bırak', {
-      fontFamily: FONT, fontSize: Math.round(Math.min(W * 0.042, 17)) + 'px', fontStyle: '700', color: '#ffb3ab',
+      fontFamily: FONT, fontSize: Math.round(Math.min(W * 0.044, 18 * D)) + 'px', fontStyle: '700', color: '#ffb3ab',
     }).setOrigin(0.5).setDepth(20).setVisible(false);
-    this.trashBg = this.add.rectangle(0, trayY, W, trayH, 0x3a1d22, 0.92).setOrigin(0).setDepth(19).setVisible(false);
 
-    // var olan makineleri geri koy
     state.grid.forEach((t, i) => { if (t) this.spawnCell(i, t, false); });
     this.updateCount();
 
@@ -197,22 +273,31 @@ class Build extends Phaser.Scene {
     this.input.on('pointermove', this.onMove, this);
     this.input.on('pointerup', this.onUp, this);
     this.input.on('pointerupoutside', this.onUp, this);
-
     this.scale.once('resize', () => this.scene.restart());
   }
 
   update(_, dt) {
-    this.cells.forEach(v => { if (v && v.blades) v.blades.rotation += dt * 0.004; });
+    this.cells.forEach(v => { if (v && v.blades) v.blades.rotation += dt * 0.006; });
+    this.slots.forEach(s => { if (s.vis.blades) s.vis.blades.rotation += dt * 0.003; });
   }
 
   // ---------- yardımcılar ----------
   drawGrid() {
-    const g = this.gridG, s = this.cell;
+    const g = this.gridG, s = this.cell, gap = Math.max(2, s * 0.04), rr = s * 0.14;
     g.clear();
-    g.fillStyle(0x0f1424, 1).fillRoundedRect(this.gx - 6, this.gy - 6, s * COLS + 12, s * ROWS + 12, 12);
+    // çukur (ızgaranın oturduğu kasa)
+    const wx = this.gx - 8 * D, wy = this.gy - 8 * D, ww = s * COLS + 16 * D, wh = s * ROWS + 16 * D;
+    g.fillStyle(C.copperDark, 1).fillRoundedRect(wx - 3 * D, wy - 3 * D, ww + 6 * D, wh + 6 * D, 18 * D);
+    g.fillStyle(C.well, 1).fillRoundedRect(wx, wy, ww, wh, 15 * D);
     for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
-      g.fillStyle(C.cell, 1).fillRoundedRect(this.gx + c * s + 2, this.gy + r * s + 2, s - 4, s - 4, 8);
+      const x = this.gx + c * s + gap, y = this.gy + r * s + gap, w = s - gap * 2;
+      g.fillStyle(C.cellLo, 1).fillRoundedRect(x, y, w, w, rr);
+      g.fillStyle(C.cell, 1).fillRoundedRect(x, y + 2 * D, w, w - 2 * D, rr);
+      g.fillStyle(C.cellHi, 0.5).fillRoundedRect(x + w * 0.2, y + w - 4 * D, w * 0.6, 2 * D, 1 * D);
     }
+    // köşe perçinleri
+    [[wx + 10 * D, wy + 10 * D], [wx + ww - 10 * D, wy + 10 * D], [wx + 10 * D, wy + wh - 10 * D], [wx + ww - 10 * D, wy + wh - 10 * D]]
+      .forEach(([x, y]) => rivet(g, x, y, 3.5 * D));
   }
   cellCenter(i) {
     const c = i % COLS, r = Math.floor(i / COLS);
@@ -225,12 +310,12 @@ class Build extends Phaser.Scene {
   }
   spawnCell(i, type, animate) {
     const p = this.cellCenter(i);
-    const v = drawMachine(this, type, this.cell * 0.8).setPosition(p.x, p.y).setDepth(10);
+    const v = drawMachine(this, type, this.cell * 0.78).setPosition(p.x, p.y).setDepth(10 + Math.floor(i / COLS));
     this.cells[i] = v;
     if (animate) {
-      v.setScale(1.25);
-      this.tweens.add({ targets: v, scale: 1, duration: 160, ease: 'Back.easeOut' });
-      this.sparks.explode(12, p.x, p.y + this.cell * 0.3);
+      v.y -= this.cell * 0.25; v.setScale(1.15);
+      this.tweens.add({ targets: v, y: p.y, scale: 1, duration: 180, ease: 'Bounce.easeOut' });
+      this.time.delayedCall(90, () => this.sparks.explode(14, p.x, p.y + this.cell * 0.35));
     }
   }
   updateCount() {
@@ -241,23 +326,20 @@ class Build extends Phaser.Scene {
 
   // ---------- dokunma ----------
   onDown(p) {
-    // tepsiden yeni makine
     const slot = this.slots.find(s => p.y > this.trayTop && Math.abs(p.x - s.x) < s.r);
     if (slot) {
       this.startDrag(slot.type, -1, p);
       this.tweens.add({ targets: slot.vis, scale: 0.85, duration: 60, yoyo: true });
       return;
     }
-    // ızgaradaki makine: dokun ya da taşı
     const i = this.cellAt(p.x, p.y);
-    if (i >= 0 && state.grid[i]) {
-      this.pending = { i, x: p.x, y: p.y };
-    }
+    if (i >= 0 && state.grid[i]) this.pending = { i, x: p.x, y: p.y };
   }
 
   startDrag(type, from, p) {
-    const ghost = drawMachine(this, type, this.cell * 0.88).setDepth(30).setAlpha(0.92);
+    const ghost = drawMachine(this, type, this.cell * 0.86).setDepth(30);
     ghost.setPosition(p.x, this.ghostY(p.y));
+    this.tweens.add({ targets: ghost, angle: { from: -4, to: 4 }, duration: 260, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     this.drag = { type, from, ghost };
     if (from >= 0) {
       this.cells[from].destroy();
@@ -272,7 +354,7 @@ class Build extends Phaser.Scene {
 
   onMove(p) {
     if (this.pending && !this.drag) {
-      if (Phaser.Math.Distance.Between(p.x, p.y, this.pending.x, this.pending.y) > 10) {
+      if (Phaser.Math.Distance.Between(p.x, p.y, this.pending.x, this.pending.y) > 10 * D) {
         const { i } = this.pending;
         const type = state.grid[i];
         this.pending = null;
@@ -287,23 +369,23 @@ class Build extends Phaser.Scene {
 
   updateHighlight(p) {
     const g = this.hl; g.clear();
+    if (p.y > this.trayTop) return;
     const i = this.cellAt(p.x, this.ghostY(p.y));
     if (i < 0) return;
-    const c = i % COLS, r = Math.floor(i / COLS), s = this.cell;
+    const c = i % COLS, r = Math.floor(i / COLS), s = this.cell, gap = Math.max(2, s * 0.04);
     const ok = !state.grid[i];
-    g.lineStyle(4, ok ? C.ok : C.bad, 1).strokeRoundedRect(this.gx + c * s + 3, this.gy + r * s + 3, s - 6, s - 6, 8);
-    g.fillStyle(ok ? C.ok : C.bad, 0.15).fillRoundedRect(this.gx + c * s + 3, this.gy + r * s + 3, s - 6, s - 6, 8);
+    g.fillStyle(ok ? C.ok : C.bad, 0.18).fillRoundedRect(this.gx + c * s + gap, this.gy + r * s + gap, s - gap * 2, s - gap * 2, s * 0.14);
+    g.lineStyle(3 * D, ok ? C.ok : C.bad, 1).strokeRoundedRect(this.gx + c * s + gap, this.gy + r * s + gap, s - gap * 2, s - gap * 2, s * 0.14);
   }
 
   onUp(p) {
     if (this.pending && !this.drag) {
-      // kısa dokunuş: makine tepki verir
       const v = this.cells[this.pending.i];
       this.pending = null;
       if (v) {
         this.tweens.killTweensOf(v); v.setScale(1);
         this.tweens.add({ targets: v, scaleX: 1.1, scaleY: 0.88, duration: 55, yoyo: true });
-        this.sparks.explode(8, p.x, p.y);
+        this.sparks.explode(10, p.x, p.y);
         sfx.tap();
       }
       return;
@@ -311,6 +393,7 @@ class Build extends Phaser.Scene {
     if (!this.drag) return;
     const { type, from, ghost } = this.drag;
     this.drag = null;
+    this.tweens.killTweensOf(ghost);
     this.hl.clear();
     this.trashBg.setVisible(false);
     this.trashText.setVisible(false);
@@ -322,22 +405,17 @@ class Build extends Phaser.Scene {
       state.grid[i] = type;
       this.spawnCell(i, type, true);
       sfx.place();
-      if (this.hint.visible && state.grid.filter(Boolean).length >= 2) {
-        this.hint.setText('Makineye dokun ya da sürükleyip taşı');
-      }
-    } else if (from >= 0 && (i < 0 || p.y > this.trayTop)) {
-      // ızgaradan dışarı: kaldır
+      if (state.grid.filter(Boolean).length >= 2) this.hint.setText('Makineye dokun ya da sürükleyip taşı');
+    } else if (from >= 0 && (i < 0 || inTray)) {
       this.tweens.add({ targets: ghost, scale: 0, angle: 90, alpha: 0, duration: 200, onComplete: () => ghost.destroy() });
       sfx.trash();
     } else if (from >= 0) {
-      // dolu hücre: eski yerine dön
       ghost.destroy();
       state.grid[from] = type;
       this.spawnCell(from, type, false);
       this.cameras.main.shake(80, 0.004);
       sfx.bad();
     } else {
-      // tepsiden gelip boş olmayan / dışarı: geri uç
       if (i >= 0) { this.cameras.main.shake(80, 0.004); sfx.bad(); }
       this.tweens.add({ targets: ghost, alpha: 0, scale: 0.5, duration: 150, onComplete: () => ghost.destroy() });
     }
@@ -345,12 +423,35 @@ class Build extends Phaser.Scene {
   }
 }
 
-new Phaser.Game({
-  type: Phaser.AUTO,
-  parent: 'game',
-  backgroundColor: C.bg,
-  scale: { mode: Phaser.Scale.RESIZE, width: '100%', height: '100%' },
-  input: { activePointers: 1 },
-  scene: [Build],
-});
+// ---------- başlat ----------
+function boot() {
+  const el = document.getElementById('game');
+  const size = () => [Math.round(el.clientWidth * D), Math.round(el.clientHeight * D)];
+  const [w, h] = size();
+  const game = new Phaser.Game({
+    type: Phaser.AUTO,
+    parent: el,
+    backgroundColor: C.bgBot,
+    antialias: true,
+    scale: { mode: Phaser.Scale.NONE, width: w, height: h, zoom: 1 / D },
+    input: { activePointers: 1 },
+    scene: [Build],
+  });
+  let t = null;
+  window.addEventListener('resize', () => {
+    clearTimeout(t);
+    t = setTimeout(() => {
+      const [nw, nh] = size();
+      if (nw !== game.scale.width || nh !== game.scale.height) {
+        game.scale.resize(nw, nh);
+        game.scale.setZoom(1 / D);
+      }
+    }, 120);
+  });
+}
+// Yazı tipini bekle (en fazla 1.5 sn), sonra başlat
+Promise.race([
+  document.fonts ? Promise.all([document.fonts.load('700 20px Fredoka'), document.fonts.load('500 20px Fredoka')]) : Promise.resolve(),
+  new Promise(r => setTimeout(r, 1500)),
+]).catch(() => {}).then(boot);
 </script>
