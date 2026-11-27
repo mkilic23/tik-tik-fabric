@@ -1,0 +1,176 @@
+<title>Tık Tık Fabric</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+  /* Tek ekranlık oyun: tuval tüm alanı kaplar, tek koyu tema (bilinçli seçim). */
+  :root {
+    --bg: #141a2e;
+    --fg: #f3e9d8;
+    color-scheme: dark;
+  }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    overflow: hidden;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #game {
+    position: fixed;
+    inset: 0;
+    padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+  }
+  #game canvas { display: block; }
+</style>
+<div id="game"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.80.1/phaser.min.js"></script>
+<script>
+// Tık Tık Fabric — Adım 0: dokunma testi
+// Amaç: telefonda açılıyor mu, dokunuşa ses + titreşim + görsel tepki veriyor mu?
+
+const COLORS = {
+  bg: 0x141a2e,
+  copper: 0xc8743a,
+  copperDark: 0x7a3f1d,
+  brass: 0xe0b450,
+  spark: 0xffd84a,
+  energy: 0x4fd6e0,
+  cream: '#f3e9d8',
+  dim: '#8b93b0',
+};
+
+let audioCtx = null;
+function tickSound(pitch) {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const t = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(pitch, t);
+    osc.frequency.exponentialRampToValueAtTime(pitch * 0.5, t + 0.08);
+    gain.gain.setValueAtTime(0.18, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(t);
+    osc.stop(t + 0.11);
+  } catch (e) {}
+}
+function buzz(ms) {
+  try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) {}
+}
+
+class TouchTest extends Phaser.Scene {
+  constructor() { super('touch'); this.taps = 0; this.combo = 0; this.lastTap = 0; }
+
+  create() {
+    const { width, height } = this.scale;
+    const cx = width / 2;
+
+    // Spark texture for particles
+    const g = this.make.graphics({ x: 0, y: 0, add: false });
+    g.fillStyle(0xffffff, 1).fillCircle(4, 4, 4);
+    g.generateTexture('spark', 8, 8);
+    g.destroy();
+
+    this.add.text(cx, height * 0.09, 'TIK TIK FABRIC', {
+      fontFamily: 'system-ui, sans-serif', fontSize: Math.round(width * 0.075) + 'px',
+      fontStyle: '900', color: COLORS.cream,
+    }).setOrigin(0.5).setLetterSpacing?.(3);
+
+    this.add.text(cx, height * 0.09 + width * 0.075, 'Adım 0 · dokunma testi', {
+      fontFamily: 'system-ui, sans-serif', fontSize: Math.round(width * 0.038) + 'px', color: COLORS.dim,
+    }).setOrigin(0.5);
+
+    // Machine: a copper press with a brass button
+    const size = Math.min(width * 0.55, height * 0.3);
+    this.machine = this.add.container(cx, height * 0.47);
+    const body = this.add.rectangle(0, 0, size, size, COLORS.copper).setStrokeStyle(6, COLORS.copperDark);
+    const plate = this.add.rectangle(0, -size * 0.3, size * 0.7, size * 0.14, COLORS.copperDark);
+    this.button = this.add.circle(0, size * 0.08, size * 0.22, COLORS.brass).setStrokeStyle(5, COLORS.copperDark);
+    const bolt1 = this.add.circle(-size * 0.4, -size * 0.4, size * 0.035, COLORS.copperDark);
+    const bolt2 = this.add.circle(size * 0.4, -size * 0.4, size * 0.035, COLORS.copperDark);
+    const bolt3 = this.add.circle(-size * 0.4, size * 0.4, size * 0.035, COLORS.copperDark);
+    const bolt4 = this.add.circle(size * 0.4, size * 0.4, size * 0.035, COLORS.copperDark);
+    this.machine.add([body, plate, this.button, bolt1, bolt2, bolt3, bolt4]);
+    this.machine.setSize(size, size).setInteractive({ useHandCursor: true });
+    this.machineSize = size;
+
+    this.hint = this.add.text(cx, height * 0.47 + size * 0.5 + 34, 'Makineye dokun', {
+      fontFamily: 'system-ui, sans-serif', fontSize: Math.round(width * 0.05) + 'px', fontStyle: '700', color: COLORS.cream,
+    }).setOrigin(0.5);
+    this.tweens.add({ targets: this.hint, alpha: 0.35, duration: 700, yoyo: true, repeat: -1 });
+
+    this.counter = this.add.text(cx, height * 0.8, '✦ 0', {
+      fontFamily: 'system-ui, sans-serif', fontSize: Math.round(width * 0.1) + 'px', fontStyle: '900', color: '#ffd84a',
+    }).setOrigin(0.5);
+    this.comboText = this.add.text(cx, height * 0.8 + width * 0.09, '', {
+      fontFamily: 'system-ui, sans-serif', fontSize: Math.round(width * 0.042) + 'px', color: COLORS.dim,
+    }).setOrigin(0.5);
+
+    this.info = this.add.text(12, height - 12, `${Math.round(width)}×${Math.round(height)} · Phaser ${Phaser.VERSION}`, {
+      fontFamily: 'ui-monospace, monospace', fontSize: '11px', color: '#4a5272',
+    }).setOrigin(0, 1);
+
+    this.sparks = this.add.particles(0, 0, 'spark', {
+      speed: { min: 120, max: 380 }, angle: { min: 0, max: 360 }, lifespan: 500,
+      scale: { start: 1.4, end: 0 }, tint: [COLORS.spark, COLORS.brass, COLORS.energy],
+      gravityY: 500, emitting: false,
+    });
+
+    // Telefon döndürülürse ekranı yeniden diz (sayaç korunur)
+    this.scale.once('resize', () => this.scene.restart());
+    if (this.taps) { this.hint.setVisible(false); this.counter.setText('✦ ' + this.taps); }
+
+    this.machine.on('pointerdown', (p) => this.hitMachine(p));
+    this.input.on('pointerdown', (p, over) => { if (!over.length) this.missTap(p); });
+  }
+
+  hitMachine(p) {
+    const now = this.time.now;
+    this.combo = now - this.lastTap < 450 ? this.combo + 1 : 1;
+    this.lastTap = now;
+    const gain = this.combo >= 5 ? 2 : 1;
+    this.taps += gain;
+
+    if (this.hint.visible) { this.tweens.killTweensOf(this.hint); this.hint.setVisible(false); }
+
+    // Squash the machine, press the button
+    this.tweens.killTweensOf(this.machine);
+    this.machine.setScale(1);
+    this.tweens.add({ targets: this.machine, scaleX: 1.08, scaleY: 0.9, duration: 50, yoyo: true, ease: 'Quad.easeOut' });
+    this.button.setFillStyle(COLORS.spark);
+    this.time.delayedCall(80, () => this.button.setFillStyle(COLORS.brass));
+
+    this.sparks.explode(this.combo >= 5 ? 22 : 10, p.x, p.y);
+    tickSound(this.combo >= 5 ? 1100 : 700 + Math.min(this.combo, 5) * 60);
+    buzz(this.combo >= 5 ? 25 : 12);
+    if (this.combo >= 5) this.cameras.main.shake(60, 0.006);
+
+    // Floating +1 / +2
+    const pop = this.add.text(p.x, p.y - 20, '+' + gain, {
+      fontFamily: 'system-ui, sans-serif', fontSize: '28px', fontStyle: '900', color: gain > 1 ? '#4fd6e0' : '#ffd84a',
+    }).setOrigin(0.5);
+    this.tweens.add({ targets: pop, y: p.y - 90, alpha: 0, duration: 600, onComplete: () => pop.destroy() });
+
+    this.counter.setText('✦ ' + this.taps);
+    this.tweens.add({ targets: this.counter, scale: 1.15, duration: 60, yoyo: true });
+    this.comboText.setText(this.combo >= 5 ? `Seri x${this.combo} · çift kıvılcım!` : (this.combo > 1 ? `Seri x${this.combo}` : ''));
+  }
+
+  missTap(p) {
+    const ring = this.add.circle(p.x, p.y, 10).setStrokeStyle(3, 0x4a5272);
+    this.tweens.add({ targets: ring, radius: 40, alpha: 0, duration: 350, onComplete: () => ring.destroy() });
+  }
+}
+
+new Phaser.Game({
+  type: Phaser.AUTO,
+  parent: 'game',
+  backgroundColor: COLORS.bg,
+  scale: { mode: Phaser.Scale.RESIZE, width: '100%', height: '100%' },
+  scene: [TouchTest],
+});
+</script>
