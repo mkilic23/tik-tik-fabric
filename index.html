@@ -200,7 +200,8 @@ const RULES = {
   startPlaces: 3,                      // 1. turda yerleştirme hakkı
   placesPerRound: 2,                   // sonraki turlarda eklenen hak
   startMoney: 10,
-  tapCooldown: 0.5,                    // geçici: dokununca anında bir üretim (mini oyunlar gelene kadar)
+  tapCooldown: 0.5,
+  bonusEvery: 3,                       // hedef tutunca: kalan her 3 sn = +1 ● bonus                    // geçici: dokununca anında bir üretim (mini oyunlar gelene kadar)
 };
 // her makine: kaç saniyede bir çalışır, ne harcar, ne üretir
 const PROD = {
@@ -303,7 +304,7 @@ class Build extends Phaser.Scene {
       wordWrap: { width: W * 0.52 },
     }).setOrigin(0, 0.5);
     const bw = Math.min(W * 0.38, 170 * D), bh = rowH * 0.82;
-    this.goBtn = makeButton(this, W - pad - bw / 2, trayY + rowH / 2 + 4 * D, bw, bh, '▶  Başlat', BTN_GO, () => this.startRound());
+    this.goBtn = makeButton(this, W - pad - bw / 2, trayY + rowH / 2 + 4 * D, bw, bh, '▶  Başlat', BTN_GO, () => (state.phase === 'run' ? this.finishEarly() : this.startRound()));
 
     const slotW = (W - pad * 2) / ORDER.length;
     const slotH = H - this.slotTop;
@@ -407,7 +408,8 @@ class Build extends Phaser.Scene {
 
   refreshPhase() {
     const build = state.phase === 'build';
-    this.goBtn.setVisible(build);
+    this.goBtn.setVisible(build || this.canFinish());
+    this.goBtn.label.setText(build ? '▶  Başlat' : `✓ Bitir +${this.earlyBonus()} ●`);
     this.slots.forEach(s => { s.vis.setAlpha(build && state.places > 0 ? 1 : 0.35); s.name.setAlpha(build && state.places > 0 ? 1 : 0.35); s.recipe.setAlpha(s.name.alpha); });
     if (build) {
       const n = state.grid.filter(Boolean).length;
@@ -470,6 +472,15 @@ class Build extends Phaser.Scene {
   }
 
   // ---------- tur akışı ----------
+  canFinish() { return state.phase === 'run' && state.res.spark >= RULES.goals[state.round]; }
+  earlyBonus() { return Math.floor(Math.max(0, state.time) / RULES.bonusEvery); }
+  finishEarly() {
+    if (!this.canFinish()) return;
+    const bonus = this.earlyBonus();
+    state.res.money += bonus;
+    this.endRound(bonus);
+  }
+
   startRound() {
     if (state.phase !== 'build') return;
     if (!state.grid.some(Boolean)) { this.cameras.main.shake(80, 0.004); sfx.bad(); return; }
@@ -483,11 +494,11 @@ class Build extends Phaser.Scene {
     this.refreshPhase();
   }
 
-  endRound() {
+  endRound(bonus = 0) {
     const goal = RULES.goals[state.round];
     const won = state.res.spark >= goal;
     state.phase = 'end';
-    state.result = { won, spark: state.res.spark, goal, last: state.round === RULES.goals.length - 1 };
+    state.result = { won, spark: state.res.spark, goal, bonus, last: state.round === RULES.goals.length - 1 };
     this.refreshPhase();
     this.showResult();
     if (won) { [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => beep(f, 0.14, 'triangle', 0.2), i * 100)); buzz([20, 40, 20]); }
@@ -506,7 +517,7 @@ class Build extends Phaser.Scene {
     g.lineStyle(3 * D, R.won ? 0x5fd38a : 0xe0564a, 1).strokeRoundedRect(cx - cw / 2, cy - ch / 2, cw, ch, 22 * D);
     const title = R.won ? (R.last ? 'Fabrika ayakta!' : 'Hedef tuttu!') : 'Hedef tutmadı';
     const sub = R.won
-      ? (R.last ? 'Prototipin 5 turunu bitirdin.' : `Sonraki hedef: ✦ ${RULES.goals[state.round + 1]}\n+${RULES.placesPerRound} yerleştirme hakkı`)
+      ? (R.bonus ? `Erken bitirme bonusu: +${R.bonus} ●\n` : '') + (R.last ? 'Prototipin 5 turunu bitirdin.' : `Sonraki hedef: ✦ ${RULES.goals[state.round + 1]}  ·  +${RULES.placesPerRound} yerleştirme hakkı`)
       : 'Patlama ve basınç Adım 4\'te geliyor.\nŞimdilik baştan başlıyoruz.';
     const t1 = this.add.text(cx, cy - ch * 0.3, title, { fontFamily: FONT, fontSize: Math.round(cw * 0.1) + 'px', fontStyle: '700', color: R.won ? '#7fe3a5' : '#ff8a7c' }).setOrigin(0.5);
     const t2 = this.add.text(cx, cy - ch * 0.1, `✦ ${R.spark} / ${R.goal}`, { fontFamily: FONT, fontSize: Math.round(cw * 0.085) + 'px', fontStyle: '700', color: '#ffd84a' }).setOrigin(0.5);
@@ -598,6 +609,12 @@ class Build extends Phaser.Scene {
     const prev = Math.ceil(state.time + dt);
     if (Math.ceil(state.time) !== prev && state.time <= 5 && state.time > 0) { beep(1200, 0.05, 'square', 0.1); buzz(6); }
     this.updateHud(false);
+    const can = this.canFinish();
+    if (can !== this.goBtn.visible || (can && (this.lastBonus !== this.earlyBonus()))) {
+      if (can && !this.goBtn.visible) { this.hint.setText('Hedef tuttu! Bitir ya da para için devam et.'); beep(880, 0.1, 'triangle', 0.18); buzz(20); this.goBtn.setScale(1.2); this.tweens.add({ targets: this.goBtn, scale: 1, duration: 250, ease: 'Back.easeOut' }); }
+      this.lastBonus = this.earlyBonus();
+      this.goBtn.setVisible(can).label.setText(`✓ Bitir +${this.lastBonus} ●`);
+    }
     if (state.time <= 0) { state.time = 0; this.endRound(); }
   }
 
