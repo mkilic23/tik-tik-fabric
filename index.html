@@ -30,7 +30,7 @@
 <div id="game"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.80.1/phaser.min.js"></script>
 <script>
-// Tık Tık Fabric — Adım 2: üretim, kaynaklar ve tur
+// Tık Tık Fabric — Adım 3: bakım ve mini oyunlar
 // Tüm çizim cihazın gerçek piksel yoğunluğunda yapılır (D = devicePixelRatio), böylece keskin görünür.
 
 const D = Math.min(window.devicePixelRatio || 1, 3);
@@ -59,7 +59,7 @@ const INFO = {
   crank: { recipe: '→ ⚡',     title: 'Krank: enerji üretir',          body: 'Her saniye +1 ⚡ enerji. Diğer makineler bu enerjiyle çalışır.' },
   press: { recipe: '⚡ → ✦',   title: 'Pres: kıvılcım yapar',          body: '1 ⚡ harcar, 1 ✦ yapar. Tur hedefi kıvılcımdır!' },
   mint:  { recipe: '⚡ → ●',   title: 'Basıcı: para yapar',            body: '1 ⚡ harcar, 1 ● yapar. Para ileride dükkanda harcanacak.' },
-  fan:   { recipe: 'soğutur',  title: 'Fan: komşularını soğutur',      body: 'Makineler Adım 4\'te ısınmaya başlayacak. Şimdilik boşta.' },
+  fan:   { recipe: 'hızlandırır', title: 'Fan: komşularını hızlandırır', body: 'Bakımını iyi yaparsan yanındaki 4 makine bir süre hızlı çalışır.' },
 };
 
 // Oyun durumu (ekran döndürülünce korunur)
@@ -200,8 +200,10 @@ const RULES = {
   startPlaces: 3,                      // 1. turda yerleştirme hakkı
   placesPerRound: 2,                   // sonraki turlarda eklenen hak
   startMoney: 10,
-  tapCooldown: 0.5,
-  bonusEvery: 3,                       // hedef tutunca: kalan her 3 sn = +1 ● bonus                    // geçici: dokununca anında bir üretim (mini oyunlar gelene kadar)
+  serviceMin: 5, serviceMax: 9,        // makine kaç saniyede bir bakım ister
+  breakAfter: 5,                       // bakım istedikten kaç saniye sonra durur
+  mgTime: 4,                           // mini oyun süre sınırı
+  bonusEvery: 3,                       // hedef tutunca: kalan her 3 sn = +1 ● bonus
 };
 // her makine: kaç saniyede bir çalışır, ne harcar, ne üretir
 const PROD = {
@@ -210,6 +212,12 @@ const PROD = {
   mint:  { every: 2.5, cost: 'energy', out: 'money' },
   fan:   { every: 0,   cost: null,     out: null },     // Adım 4'te soğutacak
 };
+const GRADES = {
+  perfect: { label: 'MÜKEMMEL!', color: '#7fe3a5', mult: 2,   secs: 6 },
+  good:    { label: 'İYİ',       color: '#ffe3a8', mult: 1.4, secs: 4 },
+  bad:     { label: 'KÖTÜ',      color: '#ff8a7c', mult: 1,   secs: 0 },
+};
+const MG_TEXT = { crank: 'Krank: çevir!', press: 'Pres: zamanla!', mint: 'Basıcı: kolu çek!', fan: 'Fan: hızlandır!' };
 const RES = {
   spark:  { sym: '✦', color: '#ffd84a' },
   energy: { sym: '⚡', color: '#4fd6e0' },
@@ -353,6 +361,7 @@ class Build extends Phaser.Scene {
 
     this.refreshPhase();
     if (state.phase === 'end') this.showResult();
+    window.__scene = this; // test ve hata ayıklama için
   }
 
   // ---------- üst bilgi ----------
@@ -418,7 +427,7 @@ class Build extends Phaser.Scene {
         : (n ? 'Hakların bitti. Taşıyabilir ya da başlatabilirsin.' : ''));
       this.goBtn.setAlpha(n ? 1 : 0.45);
     } else if (state.phase === 'run') {
-      this.hint.setText('Üretim sürüyor. Makinelere dokun!');
+      this.hint.setText('! çıkan makineye dokun, bakımını yap.');
     }
     this.updateHud(true);
     this.tutorial();
@@ -446,7 +455,7 @@ class Build extends Phaser.Scene {
     this.goRing.setVisible(false);
     if (this.infoUntil && this.time.now < this.infoUntil) return;
     if (state.round !== 0 || state.tutorialDone) {
-      if (state.phase !== 'run') this.banner.setVisible(false);
+      this.banner.setVisible(false);
       return;
     }
     const has = t => state.grid.includes(t);
@@ -463,7 +472,7 @@ class Build extends Phaser.Scene {
       }
     } else if (state.phase === 'run') {
       if (state.time > RULES.roundTime - 8) {
-        this.setBanner('⚡ Krank\'tan Pres\'e enerji akıyor', 'Pres her enerjiyi ✦ kıvılcıma çeviriyor. Makinelere dokunursan daha hızlı üretirler!', MACHINES.press.color);
+        this.setBanner('⚡ Krank\'tan Pres\'e enerji akıyor', 'Pres her enerjiyi ✦ kıvılcıma çeviriyor. Makinelerde ! çıkınca dokun, bakım yap.', MACHINES.press.color);
       } else {
         this.banner.setVisible(false);
         state.tutorialDone = true;
@@ -488,13 +497,15 @@ class Build extends Phaser.Scene {
     state.time = RULES.roundTime;
     state.res.spark = 0;
     state.res.energy = 0;
-    this.cells.forEach(v => { if (v) { v.t = 0; v.cd = 0; } });
+    this.cells.forEach(v => { if (v) { v.t = 0; v.boost = null; this.resetService(v); } });
     beep(392, 0.12, 'triangle', 0.2); setTimeout(() => beep(523, 0.12, 'triangle', 0.2), 110); setTimeout(() => beep(784, 0.2, 'triangle', 0.2), 220);
     buzz(30);
     this.refreshPhase();
   }
 
   endRound(bonus = 0) {
+    if (this.mg) { this.mg.panel.destroy(); this.mg = null; }
+    this.cells.forEach(v => { if (v) { this.setAlert(v, null); v.setAlpha(1); v.svc = 'ok'; } });
     const goal = RULES.goals[state.round];
     const won = state.res.spark >= goal;
     state.phase = 'end';
@@ -568,6 +579,278 @@ class Build extends Phaser.Scene {
     return true;
   }
 
+  // =====================================================================
+  // BAKIM VE MİNİ OYUNLAR
+  // =====================================================================
+  resetService(v) {
+    v.svc = 'ok';
+    v.needIn = Phaser.Math.FloatBetween(RULES.serviceMin, RULES.serviceMax);
+    v.brokeIn = RULES.breakAfter;
+    this.setAlert(v, null);
+  }
+
+  setAlert(v, kind) {
+    if (v.alert) { v.alert.destroy(); v.alert = null; }
+    if (!kind) return;
+    const s = this.cell;
+    const a = this.add.container(v.x + s * 0.3, v.y - s * 0.36).setDepth(45);
+    const g = this.add.graphics();
+    const col = kind === 'broken' ? 0xe0564a : 0xffc23d;
+    g.fillStyle(0x000000, 0.35).fillCircle(0, 2 * D, s * 0.17);
+    g.fillStyle(col, 1).fillCircle(0, 0, s * 0.17);
+    g.lineStyle(2 * D, 0x2a1405, 1).strokeCircle(0, 0, s * 0.17);
+    const t = this.add.text(0, 0, kind === 'broken' ? '✕' : '!', { fontFamily: FONT, fontSize: Math.round(s * 0.24) + 'px', fontStyle: '700', color: '#2a1405' }).setOrigin(0.5);
+    a.add([g, t]);
+    this.tweens.add({ targets: a, y: a.y - s * 0.06, duration: kind === 'broken' ? 180 : 320, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    v.alert = a;
+  }
+
+  tickService(v, i, dt) {
+    if (this.mg && this.mg.i === i) return;
+    if (v.svc === 'ok') {
+      v.needIn -= dt;
+      if (v.needIn <= 0) {
+        v.svc = 'need'; v.brokeIn = RULES.breakAfter;
+        this.setAlert(v, 'need');
+        beep(660, 0.06, 'triangle', 0.12); setTimeout(() => beep(660, 0.06, 'triangle', 0.12), 120);
+        buzz(15);
+        if (!state.serviceTaught) this.flashTip('Makine bakım istiyor!', '! işaretli makineye dokun ve mini oyunu oyna. Yoksa birkaç saniye sonra durur.', 0xffc23d, 5000, () => { state.serviceTaught = true; });
+      }
+    } else if (v.svc === 'need') {
+      v.brokeIn -= dt;
+      if (v.brokeIn <= 0) {
+        v.svc = 'broken';
+        this.setAlert(v, 'broken');
+        beep(120, 0.25, 'sawtooth', 0.12); buzz(60);
+        this.cameras.main.shake(100, 0.003);
+      }
+    }
+  }
+
+  speedOf(v) {
+    if (v.svc === 'broken') return 0;
+    let m = 1;
+    if (v.boost && state.time > v.boost.until) m *= v.boost.mult; // süre geri sayıyor: time > until iken aktif
+    return m;
+  }
+
+  flashTip(title, body, accent, ms, done) {
+    this.setBanner(title, body, accent);
+    this.infoUntil = this.time.now + ms;
+    if (done) this.time.delayedCall(ms, done);
+  }
+
+  // ---------- mini oyun paneli ----------
+  openMinigame(i) {
+    if (this.mg) return;
+    const v = this.cells[i];
+    const W = this.W, s = this.cell;
+    const pw = W - this.pad * 2, ph = Math.min(s * 2.9, 290 * D);
+    const mc = this.cellCenter(i);
+    const gridMid = this.gy + s * ROWS / 2;
+    let py = mc.y < gridMid ? mc.y + s * 0.62 : mc.y - s * 0.62 - ph;
+    py = Phaser.Math.Clamp(py, 8 * D, this.trayTop - ph - 8 * D);
+    const panel = this.add.container(this.pad, py).setDepth(80);
+    const g = this.add.graphics();
+    const m = MACHINES[v.type];
+    // ok ucu makineye
+    const tipX = mc.x - this.pad, up = mc.y < py;
+    g.fillStyle(0x2a3456, 1);
+    if (up) g.fillTriangle(tipX - 14 * D, 2, tipX + 14 * D, 2, tipX, -14 * D);
+    else g.fillTriangle(tipX - 14 * D, ph - 2, tipX + 14 * D, ph - 2, tipX, ph + 14 * D);
+    g.fillStyle(0x000000, 0.4).fillRoundedRect(0, 6 * D, pw, ph, 20 * D);
+    g.fillStyle(0x232c4a, 1).fillRoundedRect(0, 0, pw, ph, 20 * D);
+    g.lineStyle(3 * D, 0x2a3456, 1).strokeRoundedRect(0, 0, pw, ph, 20 * D);
+    g.lineStyle(2 * D, m.color, 0.9).strokeRoundedRect(3 * D, 3 * D, pw - 6 * D, ph - 6 * D, 17 * D);
+    const title = this.add.text(16 * D, 20 * D, MG_TEXT[v.type], { fontFamily: FONT, fontSize: Math.round(Math.min(W * 0.042, 17 * D)) + 'px', fontStyle: '700', color: '#ffe3a8' }).setOrigin(0, 0.5);
+    const timer = this.add.graphics();
+    panel.add([g, title, timer]);
+    const mg = {
+      i, v, type: v.type, panel, pw, ph, timer, t: 0, limit: RULES.mgTime, done: false,
+      cx: pw / 2, cy: ph * 0.58, gfx: this.add.graphics(), parts: {},
+      local: (p) => ({ x: p.x - this.pad, y: p.y - py }),
+    };
+    panel.add(mg.gfx);
+    this.mg = mg;
+    panel.setScale(0.85).setAlpha(0);
+    this.tweens.add({ targets: panel, scale: 1, alpha: 1, duration: 120, ease: 'Back.easeOut' });
+    sfx.pick();
+    this['mgInit_' + v.type](mg);
+  }
+
+  closeMinigame(grade) {
+    const mg = this.mg; if (!mg || mg.done) return;
+    mg.done = true;
+    (window.__grades = window.__grades || []).push(mg.type + ':' + grade + '@' + mg.t.toFixed(2));
+    const v = mg.v, i = mg.i;
+    // sonuç
+    const R = GRADES[grade];
+    const c = this.cellCenter(i);
+    const pop = this.add.text(c.x, c.y - this.cell * 0.2, R.label, {
+      fontFamily: FONT, fontSize: Math.round(this.cell * (grade === 'perfect' ? 0.36 : 0.28)) + 'px', fontStyle: '700', color: R.color,
+      stroke: '#0b0f1c', strokeThickness: 5 * D,
+    }).setOrigin(0.5).setDepth(90).setScale(0.4);
+    this.tweens.add({ targets: pop, scale: 1, duration: 160, ease: 'Back.easeOut' });
+    this.tweens.add({ targets: pop, y: pop.y - this.cell * 0.6, alpha: 0, delay: 650, duration: 400, onComplete: () => pop.destroy() });
+    if (grade === 'perfect') {
+      [784, 988, 1318].forEach((f, k) => setTimeout(() => beep(f, 0.09, 'triangle', 0.2), k * 60));
+      buzz([15, 30, 25]); this.cameras.main.shake(90, 0.005);
+      this.sparks.explode(26, c.x, c.y);
+    } else if (grade === 'good') { beep(660, 0.1, 'triangle', 0.18); buzz(15); this.sparks.explode(10, c.x, c.y); }
+    else { beep(200, 0.15, 'sawtooth', 0.1); buzz([10, 30, 10]); }
+
+    this.resetService(v);
+    const applyBoost = (target) => { if (R.mult > 1) target.boost = { mult: R.mult, until: state.time - R.secs }; };
+    if (v.type === 'fan') {
+      // fan: komşularını hızlandırır
+      const c0 = i % COLS, r0 = Math.floor(i / COLS);
+      [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dx, dy]) => {
+        const cc = c0 + dx, rr = r0 + dy;
+        if (cc < 0 || cc >= COLS || rr < 0 || rr >= ROWS) return;
+        const n = this.cells[rr * COLS + cc];
+        if (n && R.mult > 1) { applyBoost(n); const nc = this.cellCenter(rr * COLS + cc); this.sparks.explode(8, nc.x, nc.y); }
+      });
+    } else applyBoost(v);
+
+    const panel = mg.panel;
+    this.tweens.add({ targets: panel, alpha: 0, scale: 0.9, duration: 140, delay: 120, onComplete: () => panel.destroy() });
+    this.mg = null;
+  }
+
+  mgUpdate(dt) {
+    const mg = this.mg; if (!mg) return;
+    mg.t += dt;
+    const f = Math.max(0, 1 - mg.t / mg.limit);
+    const tg = mg.timer; tg.clear();
+    tg.fillStyle(0x0b0f1c, 1).fillRoundedRect(mg.pw - 16 * D - mg.pw * 0.3, 14 * D, mg.pw * 0.3, 10 * D, 5 * D);
+    tg.fillStyle(f > 0.35 ? 0x5fd38a : 0xe0564a, 1).fillRoundedRect(mg.pw - 16 * D - mg.pw * 0.3, 14 * D, Math.max(10 * D, mg.pw * 0.3 * f), 10 * D, 5 * D);
+    this['mgStep_' + mg.type](mg, dt);
+    if (this.mg === mg && mg.t >= mg.limit) this.closeMinigame('bad');
+  }
+  grade(mg, perfectT, goodT) { return mg.t <= perfectT ? 'perfect' : mg.t <= goodT ? 'good' : 'bad'; }
+
+  // --- Krank: parmakla daire çiz (2 tur) ---
+  mgInit_crank(mg) {
+    mg.R = Math.min(mg.ph * 0.3, mg.pw * 0.25);
+    mg.angle = -Math.PI / 2; mg.total = 0; mg.last = null; mg.quarter = 0;
+    mg.hint = this.add.text(mg.cx, mg.ph - 18 * D, 'Parmağınla 2 tur çevir', { fontFamily: FONT, fontSize: Math.round(14 * D) + 'px', color: C.dim }).setOrigin(0.5);
+    mg.panel.add(mg.hint);
+  }
+  mgStep_crank(mg) {
+    const g = mg.gfx, R = mg.R, prog = Math.min(1, Math.abs(mg.total) / (Math.PI * 4));
+    g.clear();
+    g.fillStyle(C.brassDark, 1).fillCircle(mg.cx, mg.cy + 3 * D, R);
+    g.fillStyle(C.brass, 1).fillCircle(mg.cx, mg.cy, R);
+    g.fillStyle(C.brassHi, 0.4).fillCircle(mg.cx - R * 0.2, mg.cy - R * 0.25, R * 0.6);
+    g.fillStyle(0x10162a, 1).fillCircle(mg.cx, mg.cy, R * 0.78);
+    if (prog > 0) {
+      g.lineStyle(R * 0.16, 0x4fd6e0, 1);
+      g.beginPath(); g.arc(mg.cx, mg.cy, R * 0.66, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * prog, false); g.strokePath();
+    }
+    const hx = mg.cx + Math.cos(mg.angle) * R * 0.66, hy = mg.cy + Math.sin(mg.angle) * R * 0.66;
+    g.lineStyle(R * 0.12, C.copperDark, 1).lineBetween(mg.cx, mg.cy, hx, hy);
+    g.fillStyle(C.copper, 1).fillCircle(mg.cx, mg.cy, R * 0.14);
+    g.fillStyle(C.copperDark, 1).fillCircle(hx, hy + 2 * D, R * 0.2);
+    g.fillStyle(C.copperHi, 1).fillCircle(hx, hy, R * 0.2);
+  }
+  mgDown_crank(mg, p) { const l = mg.local(p); mg.last = Math.atan2(l.y - mg.cy, l.x - mg.cx); }
+  mgMove_crank(mg, p) {
+    if (mg.last === null) return;
+    const l = mg.local(p), a = Math.atan2(l.y - mg.cy, l.x - mg.cx);
+    let d = a - mg.last; if (d > Math.PI) d -= Math.PI * 2; if (d < -Math.PI) d += Math.PI * 2;
+    mg.last = a; mg.total += d; mg.angle = a;
+    const q = Math.floor(Math.abs(mg.total) / (Math.PI / 2));
+    if (q > mg.quarter) { mg.quarter = q; beep(500 + q * 60, 0.04, 'square', 0.1); buzz(6); }
+    if (Math.abs(mg.total) >= Math.PI * 4) this.closeMinigame(this.grade(mg, 1.6, 2.8));
+  }
+  mgUp_crank(mg) { mg.last = null; }
+
+  // --- Pres: ritim çubuğu ---
+  mgInit_press(mg) {
+    mg.bw = mg.pw * 0.8; mg.bx = (mg.pw - mg.bw) / 2; mg.bh = Math.min(44 * D, mg.ph * 0.2);
+    mg.zone = Phaser.Math.FloatBetween(0.28, 0.72);
+    mg.speed = 1 / 1.1; mg.pos = 0;
+    mg.hint = this.add.text(mg.cx, mg.ph - 18 * D, 'İbre yeşil bölgedeyken dokun', { fontFamily: FONT, fontSize: Math.round(14 * D) + 'px', color: C.dim }).setOrigin(0.5);
+    mg.panel.add(mg.hint);
+  }
+  mgStep_press(mg) {
+    mg.pos = (Math.sin(mg.t * Math.PI * 2 * mg.speed - Math.PI / 2) + 1) / 2;
+    const g = mg.gfx, y = mg.cy - mg.bh / 2;
+    g.clear();
+    g.fillStyle(0x0b0f1c, 1).fillRoundedRect(mg.bx, y, mg.bw, mg.bh, mg.bh * 0.3);
+    g.fillStyle(0x2e8a52, 1).fillRect(mg.bx + mg.bw * (mg.zone - 0.12), y + 4 * D, mg.bw * 0.24, mg.bh - 8 * D);
+    g.fillStyle(0x7fe3a5, 1).fillRect(mg.bx + mg.bw * (mg.zone - 0.045), y + 4 * D, mg.bw * 0.09, mg.bh - 8 * D);
+    const nx = mg.bx + mg.bw * mg.pos;
+    g.fillStyle(0xffd84a, 1).fillTriangle(nx - 10 * D, y - 14 * D, nx + 10 * D, y - 14 * D, nx, y + 2 * D);
+    g.fillStyle(0xffffff, 1).fillRect(nx - 2 * D, y, 4 * D, mg.bh);
+  }
+  mgDown_press(mg) {
+    const d = Math.abs(mg.pos - mg.zone);
+    this.closeMinigame(d < 0.045 ? 'perfect' : d < 0.12 ? 'good' : 'bad');
+  }
+
+  // --- Basıcı: kolu yukarı çek ---
+  mgInit_mint(mg) {
+    mg.sh = mg.ph * 0.58; mg.sx = mg.cx; mg.sy = mg.cy - mg.sh / 2 + 6 * D; mg.k = 0; mg.drag = false;
+    mg.hint = this.add.text(mg.cx, mg.ph - 18 * D, 'Kolu hızlıca yukarı çek', { fontFamily: FONT, fontSize: Math.round(14 * D) + 'px', color: C.dim }).setOrigin(0.5);
+    mg.panel.add(mg.hint);
+  }
+  mgStep_mint(mg, dt) {
+    if (!mg.drag && mg.k > 0) mg.k = Math.max(0, mg.k - dt * 4); // geri yaylanır
+    const g = mg.gfx, w = 22 * D, ky = mg.sy + mg.sh * (1 - mg.k);
+    g.clear();
+    g.fillStyle(0x0b0f1c, 1).fillRoundedRect(mg.sx - w / 2, mg.sy, w, mg.sh, w / 2);
+    g.fillStyle(0x7fd47a, 0.35).fillRoundedRect(mg.sx - w / 2, mg.sy, w, w * 1.2, w / 2);
+    g.lineStyle(6 * D, C.copperDark, 1).lineBetween(mg.sx, ky, mg.sx + mg.sh * 0.35, ky);
+    g.fillStyle(C.copperDark, 1).fillCircle(mg.sx, ky + 3 * D, w * 1.1);
+    g.fillStyle(C.brass, 1).fillCircle(mg.sx, ky, w * 1.1);
+    g.fillStyle(C.brassHi, 0.8).fillCircle(mg.sx - w * 0.3, ky - w * 0.3, w * 0.4);
+    // ok işaretleri
+    g.fillStyle(0x7fd47a, 0.5 + 0.5 * Math.sin(mg.t * 10));
+    g.fillTriangle(mg.sx + mg.sh * 0.55 - 12 * D, mg.sy + mg.sh * 0.5, mg.sx + mg.sh * 0.55 + 12 * D, mg.sy + mg.sh * 0.5, mg.sx + mg.sh * 0.55, mg.sy + mg.sh * 0.3);
+  }
+  mgDown_mint(mg, p) { const l = mg.local(p); mg.drag = true; mg.y0 = l.y; mg.k0 = mg.k; mg.tStart = mg.t; }
+  mgMove_mint(mg, p) {
+    if (!mg.drag) return;
+    const l = mg.local(p);
+    mg.k = Phaser.Math.Clamp(mg.k0 + (mg.y0 - l.y) / (mg.sh * 0.9), 0, 1);
+    if (mg.k >= 0.97) {
+      const pull = mg.t - mg.tStart;
+      beep(320, 0.08, 'square', 0.2); setTimeout(() => beep(900, 0.06, 'triangle', 0.15), 50);
+      this.closeMinigame(pull < 0.3 ? 'perfect' : pull < 0.7 ? 'good' : 'bad');
+    }
+  }
+  mgUp_mint(mg) { mg.drag = false; }
+
+  // --- Fan: 5 hızlı dokunuş ---
+  mgInit_fan(mg) {
+    mg.taps = 0; mg.need = 5; mg.spin = 0; mg.rot = 0;
+    mg.hint = this.add.text(mg.cx, mg.ph - 18 * D, 'Hızlıca 5 kez dokun', { fontFamily: FONT, fontSize: Math.round(14 * D) + 'px', color: C.dim }).setOrigin(0.5);
+    mg.panel.add(mg.hint);
+  }
+  mgStep_fan(mg, dt) {
+    mg.spin = Math.max(0, mg.spin - dt * 6); mg.rot += (1 + mg.spin * 3) * dt * 4;
+    const g = mg.gfx, R = Math.min(mg.ph * 0.3, mg.pw * 0.25);
+    g.clear();
+    g.fillStyle(C.brassDark, 1).fillCircle(mg.cx, mg.cy + 3 * D, R);
+    g.fillStyle(C.brass, 1).fillCircle(mg.cx, mg.cy, R);
+    g.fillStyle(0x10162a, 1).fillCircle(mg.cx, mg.cy, R * 0.86);
+    for (let k = 0; k < 4; k++) {
+      const a = mg.rot + k * Math.PI / 2;
+      g.fillStyle(0x8fb4ff, 1).fillTriangle(mg.cx, mg.cy, mg.cx + Math.cos(a - 0.35) * R * 0.78, mg.cy + Math.sin(a - 0.35) * R * 0.78, mg.cx + Math.cos(a + 0.45) * R * 0.78, mg.cy + Math.sin(a + 0.45) * R * 0.78);
+    }
+    g.fillStyle(C.brass, 1).fillCircle(mg.cx, mg.cy, R * 0.16);
+    // dokunuş noktaları
+    for (let k = 0; k < mg.need; k++) {
+      const x = mg.cx + (k - (mg.need - 1) / 2) * 22 * D, y = mg.cy + R + 18 * D;
+      g.fillStyle(k < mg.taps ? 0x8fb4ff : 0x2a3456, 1).fillCircle(x, y, 7 * D);
+    }
+  }
+  mgDown_fan(mg) {
+    mg.taps++; mg.spin = 1; beep(500 + mg.taps * 90, 0.05, 'square', 0.12); buzz(8);
+    if (mg.taps >= mg.need) this.closeMinigame(this.grade(mg, 1.1, 1.9));
+  }
+
   flowEnergy(to) {
     // en yakın Krank'tan bu makineye uçan ⚡
     let best = -1, bd = 1e9;
@@ -599,13 +882,16 @@ class Build extends Phaser.Scene {
     ['crank', 'press', 'mint'].forEach(type => {
       this.cells.forEach((v, i) => {
         if (!v || v.type !== type) return;
-        v.cd = Math.max(0, (v.cd || 0) - dt);
-        v.t = (v.t || 0) + dt;
+        this.tickService(v, i, dt);
+        const sp = this.speedOf(v);
+        v.t = (v.t || 0) + dt * sp;
         const every = PROD[type].every;
         if (v.t >= every) { v.t -= every; this.produce(i, v, false); }
-        v.setAlpha(v.stalled ? 0.55 : 1);
+        v.setAlpha(v.svc === 'broken' ? 0.45 : v.stalled ? 0.6 : 1);
       });
     });
+    this.cells.forEach((v, i) => { if (v && v.type === 'fan') { this.tickService(v, i, dt); v.setAlpha(v.svc === 'broken' ? 0.45 : 1); } });
+    this.mgUpdate(dt);
     const prev = Math.ceil(state.time + dt);
     if (Math.ceil(state.time) !== prev && state.time <= 5 && state.time > 0) { beep(1200, 0.05, 'square', 0.1); buzz(6); }
     this.updateHud(false);
@@ -659,6 +945,7 @@ class Build extends Phaser.Scene {
   // ---------- dokunma ----------
   onDown(p) {
     if (state.phase === 'end') return;
+    if (this.mg) { const f = this['mgDown_' + this.mg.type]; if (f) f.call(this, this.mg, p); return; }
     if (state.phase === 'build' && state.places > 0 && p.y > this.slotTop) {
       const slot = this.slots.find(s => Math.abs(p.x - s.x) < s.r);
       if (slot) {
@@ -693,6 +980,7 @@ class Build extends Phaser.Scene {
   }
 
   onMove(p) {
+    if (this.mg) { const f = this['mgMove_' + this.mg.type]; if (f) f.call(this, this.mg, p); return; }
     if (this.pending && !this.drag) {
       // makineler yalnızca inşa evresinde taşınır
       if (state.phase === 'build' && Phaser.Math.Distance.Between(p.x, p.y, this.pending.x, this.pending.y) > 10 * D) {
@@ -720,6 +1008,7 @@ class Build extends Phaser.Scene {
   }
 
   onUp(p) {
+    if (this.mg) { const f = this['mgUp_' + this.mg.type]; if (f) f.call(this, this.mg, p); return; }
     if (this.pending && !this.drag) {
       const i = this.pending.i, v = this.cells[i];
       this.pending = null;
@@ -728,7 +1017,10 @@ class Build extends Phaser.Scene {
         this.tweens.add({ targets: v, scaleX: 1.1, scaleY: 0.88, duration: 55, yoyo: true });
         this.sparks.explode(10, p.x, p.y);
         sfx.tap();
-        if (state.phase === 'run' && (v.cd || 0) <= 0) { v.cd = RULES.tapCooldown; this.produce(i, v, true); }
+        if (state.phase === 'run') {
+          if (v.svc === 'need' || v.svc === 'broken') this.openMinigame(i);
+          else this.flashTip(INFO[v.type].title, 'Bu makine şu an iyi çalışıyor. ! işareti çıkınca dokun.', MACHINES[v.type].color, 1800);
+        }
         if (state.phase === 'build') this.showInfo(v.type);
       }
       return;
