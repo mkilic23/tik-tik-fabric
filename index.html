@@ -50,7 +50,7 @@ const FONT = '"Fredoka", system-ui, -apple-system, Segoe UI, Roboto, sans-serif'
 const MACHINES = {
   crank: { name: 'Krank',  sym: '⚡', color: 0x4fd6e0, dark: 0x1f8a93 },
   press: { name: 'Pres',   sym: '✦', color: 0xffd84a, dark: 0xb88a12 },
-  mint:  { name: 'Basıcı', sym: '●', color: 0x7fd47a, dark: 0x3d8a3a },
+  mint:  { name: 'Basıcı', sym: '💎', color: 0x7fd47a, dark: 0x3d8a3a },
   fan:   { name: 'Fan',    sym: '',  color: 0x8fb4ff, dark: 0x3e62b0 },
 };
 const ORDER = ['crank', 'press', 'mint', 'fan'];
@@ -58,7 +58,7 @@ const ORDER = ['crank', 'press', 'mint', 'fan'];
 const INFO = {
   crank: { recipe: '→ ⚡ (2 yön)', title: 'Krank: enerji üretir',     body: 'Enerjiyi sadece mavi okların gösterdiği 2 komşuya verir. Dokun: döndür.' },
   press: { recipe: '⚡ → ✦',   title: 'Pres: kıvılcım yapar',          body: 'Krank\'ın okundan enerji alır. ✦ sarı oktan çıkar; ok boş kareyi göstermeli.' },
-  mint:  { recipe: '⚡ → ●',   title: 'Basıcı: para yapar',            body: 'Krank\'ın okundan enerji alır. ● yeşil oktan çıkar; ok boş kareyi göstermeli.' },
+  mint:  { recipe: '⚡ → 💎',   title: 'Basıcı: para yapar',            body: 'Krank\'ın okundan enerji alır. 💎 yeşil oktan çıkar; ok boş kareyi göstermeli.' },
   fan:   { recipe: '2×2 soğutur', title: 'Fan: 2×2 alanı soğutur',     body: 'Mavi noktanın köşesindeki 2×2 alan yarı hızda ısınır. Dokun: alanı döndür.' },
 };
 
@@ -227,10 +227,10 @@ const RULES = {
   carryHeat: 0.6,                      // tur arasında ısının bu kadarı kalır
   missHeat: 0.6,                       // hedefin eksik oranı x 0.6 = eklenen ısı
   winCool: 0.1,                        // hedef tutunca ek soğuma
-  ventCost: 5, ventCool: 0.25,         // soğutma: 5 ● ile tüm makineler -%25 ısı
+  ventCost: 5, ventCool: 0.25,         // soğutma: 5 💎 ile tüm makineler -%25 ısı
   bufMax: 4,                           // Krank'ın biriktirebildiği enerji
   mgTime: 4,                           // mini oyun süre sınırı
-  bonusEvery: 3,                       // hedef tutunca: kalan her 3 sn = +1 ● bonus
+  bonusEvery: 3,                       // hedef tutunca: kalan her 3 sn = +1 💎 bonus
   ringSpeed: 1.3, ringHeat: 1.2,       // Halka komşularına: hız ve ısınma çarpanı
   plateHeat: 0.6,                      // Plaka: ısınma çarpanı
   rerollCost: 2,                       // dükkan yenileme (her yenilemede +1)
@@ -278,7 +278,7 @@ const MG_TEXT = { crank: 'Krank: zamanla!', press: 'Pres: zamanla!', mint: 'Bas�
 const RES = {
   spark:  { sym: '✦', color: '#ffd84a' },
   energy: { sym: '⚡', color: '#4fd6e0' },
-  money:  { sym: '●', color: '#7fd47a' },
+  money:  { sym: '💎', color: '#7fd47a' },
 };
 
 function newRun() {
@@ -485,7 +485,7 @@ class Build extends Phaser.Scene {
     this.barG = this.add.graphics();
     this.sparkText = this.add.text(pad + L / 2, row2, '', { fontFamily: FONT, fontSize: fs + 'px', fontStyle: '700', color: '#1a1405' }).setOrigin(0.5);
     const vbW = Math.min(L * 0.42, 124 * D), vbH = Math.max(26 * D, fs * 1.55);
-    this.ventBtn = makeButton(this, pad + L - vbW / 2, row3, vbW, vbH, `❄ Soğut ${RULES.ventCost}●`, { base: 0x8fb4ff, dark: 0x3e62b0, text: '#0d1a33' }, () => this.vent());
+    this.ventBtn = makeButton(this, pad + L - vbW / 2, row3, vbW, vbH, `❄ Soğut ${RULES.ventCost}💎`, { base: 0x8fb4ff, dark: 0x3e62b0, text: '#0d1a33' }, () => this.vent());
     const restW = L - vbW - 6 * D, fs2 = Math.round(fs * 0.92);
     const mk = (i, key) => this.add.text(pad + restW * (i / 3), row3, '', { fontFamily: FONT, fontSize: fs2 + 'px', fontStyle: '700', color: key }).setOrigin(0, 0.5);
     this.energyText = mk(0, RES.energy.color);
@@ -508,7 +508,7 @@ class Build extends Phaser.Scene {
     g.lineStyle(2 * D, 0x2c3654, 1).strokeRoundedRect(b.x, b.y, b.w, b.h, b.h / 2);
     this.sparkText.setText(`✦ ${r.spark} / ${goal}`).setColor(f > 0.45 ? '#1a1405' : '#ffd84a');
     this.energyText.setText(`⚡ ${r.energy}`);
-    this.moneyText.setText(`● ${r.money}`);
+    this.moneyText.setText(`💎 ${r.money}`);
     const t = Math.ceil(state.time);
     this.timeText.setText(`⏱ ${t}`).setColor(state.phase === 'run' && t <= 10 ? '#ff7a6b' : C.cream);
     // fabrika dolumu
@@ -543,7 +543,7 @@ class Build extends Phaser.Scene {
     if (state.phase !== 'build' || !state.heat.some(h => h > 0.01)) return;
     if (state.res.money < RULES.ventCost) {
       this.cameras.main.shake(80, 0.004); sfx.bad();
-      this.flashTip('Yeterli para yok', `Soğutmak için ${RULES.ventCost} ● gerekiyor. Basıcı para üretir.`, MACHINES.mint.color, 2200);
+      this.flashTip('Yeterli para yok', `Soğutmak için ${RULES.ventCost} 💎 gerekiyor. Basıcı para üretir.`, MACHINES.mint.color, 2200);
       return;
     }
     state.res.money -= RULES.ventCost;
@@ -562,7 +562,7 @@ class Build extends Phaser.Scene {
     this.ventBtn.setAlpha(canVent ? (state.res.money >= RULES.ventCost ? 1 : 0.5) : 0.25);
     const build = state.phase === 'build';
     this.goBtn.setVisible(build || this.canFinish());
-    this.goBtn.label.setText(build ? '▶  Başlat' : `✓ Bitir +${this.earlyBonus()} ●`);
+    this.goBtn.label.setText(build ? '▶  Başlat' : `✓ Bitir +${this.earlyBonus()} 💎`);
     this.slots.forEach(s => { s.vis.setAlpha(build && state.places > 0 ? 1 : 0.35); s.name.setAlpha(build && state.places > 0 ? 1 : 0.35); s.recipe.setAlpha(s.name.alpha); });
     if (build) {
       const n = state.grid.filter(Boolean).length;
@@ -624,7 +624,7 @@ class Build extends Phaser.Scene {
     const g = this.add.graphics();
     const fsT = Math.round(Math.min(W * 0.06, 25 * D)), fs = Math.round(Math.min(W * 0.034, 14 * D));
     const title = this.add.text(W / 2, top, 'Nuri Usta\'nın Dükkanı', { fontFamily: FONT, fontSize: fsT + 'px', fontStyle: '700', color: '#f0a76a' }).setOrigin(0.5, 0);
-    const money = this.add.text(W / 2, top + fsT * 1.35, `Paran: ● ${state.res.money}`, { fontFamily: FONT, fontSize: Math.round(fsT * 0.7) + 'px', fontStyle: '700', color: RES.money.color }).setOrigin(0.5, 0);
+    const money = this.add.text(W / 2, top + fsT * 1.35, `Paran: 💎 ${state.res.money}`, { fontFamily: FONT, fontSize: Math.round(fsT * 0.7) + 'px', fontStyle: '700', color: RES.money.color }).setOrigin(0.5, 0);
     k.add([dim, g, title, money]);
     const cy0 = top + fsT * 2.6;
     state.offers.forEach((o, n) => {
@@ -642,13 +642,13 @@ class Build extends Phaser.Scene {
         k.add(this.add.text(x + cardW / 2, cy0 + cardH - bh * 0.8, 'Alındı ✓', { fontFamily: FONT, fontSize: fs + 'px', fontStyle: '700', color: '#7fe3a5' }).setOrigin(0.5));
       } else {
         const can = state.res.money >= it.cost;
-        const b = makeButton(this, x + cardW / 2, cy0 + cardH - bh * 0.8, cardW - 16 * D, bh, `${it.cost} ●`, can ? BTN_GO : { base: 0x3a4466, dark: 0x252d47, text: '#8e97b8' }, () => this.buy(n));
+        const b = makeButton(this, x + cardW / 2, cy0 + cardH - bh * 0.8, cardW - 16 * D, bh, `${it.cost} 💎`, can ? BTN_GO : { base: 0x3a4466, dark: 0x252d47, text: '#8e97b8' }, () => this.buy(n));
         k.add(b);
       }
     });
     const by = cy0 + cardH + 34 * D, bw = (cw - gap) / 2, bh = Math.min(48 * D, H * 0.065);
     const rc = RULES.rerollCost + (state.rerolls || 0);
-    const rb = makeButton(this, pad + bw / 2, by, bw, bh, `↻ Yenile ${rc}●`, { base: 0x8fb4ff, dark: 0x3e62b0, text: '#0d1a33' }, () => this.reroll());
+    const rb = makeButton(this, pad + bw / 2, by, bw, bh, `↻ Yenile ${rc}💎`, { base: 0x8fb4ff, dark: 0x3e62b0, text: '#0d1a33' }, () => this.reroll());
     rb.setAlpha(state.res.money >= rc ? 1 : 0.5);
     const cb = makeButton(this, W - pad - bw / 2, by, bw, bh, 'Devam  ▶', BTN_BRASS, () => this.closeShop());
     const inv = this.add.text(W / 2, by + bh * 0.9, 'Modülü aldıktan sonra takacağın makineye dokun.', { fontFamily: FONT, fontSize: Math.round(fs * 0.9) + 'px', fontStyle: '500', color: C.dim, align: 'center', wordWrap: { width: cw } }).setOrigin(0.5, 0);
@@ -909,7 +909,7 @@ class Build extends Phaser.Scene {
       title = R.won ? 'Hedef tuttu!' : 'Hedef tutmadı';
       big = `✦ ${R.spark} / ${R.goal}`;
       const p = R.delta > 0 ? `Basınç +%${R.delta}  ▲` : R.delta < 0 ? `Basınç %${-R.delta} azaldı  ▼` : '';
-      sub = (R.bonus ? `Erken bitirme bonusu: +${R.bonus} ●\n` : '') + (p ? p + '\n' : '') + `Sonraki hedef: ✦ ${RULES.goals[state.round + 1]}  ·  +${RULES.placesPerRound} hak`;
+      sub = (R.bonus ? `Erken bitirme bonusu: +${R.bonus} 💎\n` : '') + (p ? p + '\n' : '') + `Sonraki hedef: ✦ ${RULES.goals[state.round + 1]}  ·  +${RULES.placesPerRound} hak`;
       label = 'Sonraki tur  ▶'; style = R.won ? BTN_GO : BTN_BRASS;
     }
     const t1 = this.add.text(cx, cy - ch * 0.32, title, { fontFamily: FONT, fontSize: Math.round(cw * (R.boom ? 0.088 : 0.1)) + 'px', fontStyle: '700', color: good ? '#7fe3a5' : R.boom ? '#ffb36b' : '#ff8a7c' }).setOrigin(0.5);
@@ -937,7 +937,7 @@ class Build extends Phaser.Scene {
       this.openShop();
       if (state.pressure >= 30 && !state.ventTaught) {
         state.ventTaught = true;
-        this.flashTip('Fabrika sıcak mı? Soğut!', `Mavi ❄ Soğut düğmesi ${RULES.ventCost} ● karşılığında tüm makinelerin ısısını %${Math.round(RULES.ventCool * 100)} düşürür.`, 0x8fb4ff, 6000);
+        this.flashTip('Fabrika sıcak mı? Soğut!', `Mavi ❄ Soğut düğmesi ${RULES.ventCost} 💎 karşılığında tüm makinelerin ısısını %${Math.round(RULES.ventCool * 100)} düşürür.`, 0x8fb4ff, 6000);
       }
     } else {
       newRun();
@@ -1525,7 +1525,7 @@ class Build extends Phaser.Scene {
     if (can !== this.goBtn.visible || (can && (this.lastBonus !== this.earlyBonus()))) {
       if (can && !this.goBtn.visible) { this.hint.setText('Hedef tuttu! Bitir ya da para için devam et.'); beep(880, 0.1, 'triangle', 0.18); buzz(20); this.goBtn.setScale(1.2); this.tweens.add({ targets: this.goBtn, scale: 1, duration: 250, ease: 'Back.easeOut' }); }
       this.lastBonus = this.earlyBonus();
-      this.goBtn.setVisible(can).label.setText(`✓ Bitir +${this.lastBonus} ●`);
+      this.goBtn.setVisible(can).label.setText(`✓ Bitir +${this.lastBonus} 💎`);
     }
     if (state.time <= 0) { state.time = 0; this.endRound(); }
   }
