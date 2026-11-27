@@ -1437,9 +1437,9 @@ class Build extends Phaser.Scene {
   mgInit_mint(mg) {
     mg.floor = mg.ph * 0.7; mg.dy0 = 50 * D;
     mg.fx = mg.cx + Phaser.Math.FloatBetween(-0.22, 0.22) * mg.pw;   // elmasın düştüğü yer
-    mg.mw = Math.min(84 * D, mg.pw * 0.24);
-    mg.A = mg.pw * 0.34; mg.om = Math.PI * 2 / 0.95; mg.ph0 = Phaser.Math.FloatBetween(0, 6);
-    mg.T = 1.1; mg.gv = 2 * (mg.floor - mg.dy0) / (mg.T * mg.T);
+    mg.mw = Math.min(100 * D, mg.pw * 0.28);
+    mg.A = mg.pw * 0.28; mg.om = Math.PI * 2 / 1.4; mg.ph0 = Phaser.Math.FloatBetween(0, 6);
+    mg.T = 1.2; mg.gv = 2 * (mg.floor - mg.dy0) / (mg.T * mg.T);
     mg.locked = false; mg.landed = false; mg.mx = mg.cx;
     mg.hint = this.add.text(16 * D, mg.ph - 18 * D, 'Kalıp elmasın altına gelince dokun', { fontFamily: FONT, fontSize: Math.round(13 * D) + 'px', color: C.dim }).setOrigin(0, 0.5);
     mg.panel.add(mg.hint);
@@ -1473,7 +1473,7 @@ class Build extends Phaser.Scene {
       if (mg.t >= mg.T) {
         mg.landed = true;
         const d = mg.locked ? Math.abs(mg.fx - mg.mx) / (mg.mw / 2) : 9;
-        const gr = d < 0.2 ? 'perfect' : d < 0.6 ? 'good' : 'bad';
+        const gr = d < 0.3 ? 'perfect' : d < 0.8 ? 'good' : 'bad';
         beep(gr === 'bad' ? 150 : 700, 0.08, gr === 'bad' ? 'sawtooth' : 'triangle', 0.18); buzz(20);
         mg.result = gr;
         this.time.delayedCall(220, () => { if (this.mg === mg) this.closeMinigame(gr); });
