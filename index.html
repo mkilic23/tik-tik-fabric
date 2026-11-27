@@ -118,6 +118,70 @@ function boomSound() {
     o.connect(og).connect(audioCtx.destination); o.start(t); o.stop(t + 0.95);
   } catch (e) {}
 }
+// ---------- müzik: makine sesleri ritme oturur ----------
+// Her üretim sesi bir sonraki 8'lik vuruşa kaydırılır; makine türü çalgıyı,
+// ızgaradaki yeri notayı belirler. Fabrika büyüdükçe müzik zenginleşir.
+const SCALE = [0, 3, 5, 7, 10, 12, 15, 17];   // minör pentatonik
+const Music = {
+  bpm: 112, t0: null, used: {}, lastBeat: -1, noise: null,
+  step() { return 60 / this.bpm / 2; },
+  ctx() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); return audioCtx; },
+  slot(ctx) {
+    if (this.t0 === null) this.t0 = ctx.currentTime;
+    const st = this.step(), n = Math.ceil((ctx.currentTime + 0.03 - this.t0) / st);
+    return { n, t: this.t0 + n * st };
+  },
+  tone(ctx, t, freq, dur, type, vol, drop = 1) {
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t);
+    if (drop !== 1) o.frequency.exponentialRampToValueAtTime(freq * drop, t + dur);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(ctx.destination); o.start(t); o.stop(t + dur + 0.02);
+  },
+  hiss(ctx, t, dur, vol, freq) {
+    if (!this.noise) {
+      const b = ctx.createBuffer(1, ctx.sampleRate * 0.5, ctx.sampleRate), d = b.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      this.noise = b;
+    }
+    const s = ctx.createBufferSource(); s.buffer = this.noise;
+    const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = 0.8;
+    const g = ctx.createGain(); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    s.connect(f).connect(g).connect(ctx.destination); s.start(t); s.stop(t + dur + 0.02);
+  },
+  note(type, i) {
+    try {
+      const ctx = this.ctx(); if (ctx.state !== 'running') return;
+      const { n, t } = this.slot(ctx);
+      const key = type + n; this.used[key] = (this.used[key] || 0) + 1;
+      if (this.used[key] > 2) return;                       // aynı vuruşta aynı türden en fazla 2 ses
+      if (n % 64 === 0) this.used = {};
+      const sc = SCALE[(i * 3 + (i >> 2)) % SCALE.length];
+      if (type === 'crank') this.tone(ctx, t, 55 * Math.pow(2, SCALE[i % 5] / 12), 0.28, 'triangle', 0.22, 0.7);
+      else if (type === 'press') { this.tone(ctx, t, 660 * Math.pow(2, sc / 12), 0.07, 'square', 0.04); this.hiss(ctx, t, 0.05, 0.08, 7000); }
+      else if (type === 'mint') { this.tone(ctx, t, 523 * Math.pow(2, sc / 12), 0.6, 'sine', 0.1); this.tone(ctx, t, 1046 * Math.pow(2, sc / 12), 0.3, 'sine', 0.025); }
+    } catch (e) {}
+  },
+  // tur boyunca saat: her vuruşta tık-tak, Fan'lar varsa hafif rüzgâr; basınç yükselince tempo artar
+  tick(fans, pressure) {
+    try {
+      if (!audioCtx || audioCtx.state !== 'running') return;
+      const ctx = audioCtx;
+      this.bpm = 112 + Math.round(Math.max(0, pressure - 50) * 0.5);
+      const beat = 60 / this.bpm;
+      if (this.t0 === null) this.t0 = ctx.currentTime;
+      const b = Math.ceil((ctx.currentTime + 0.05 - this.t0) / beat);
+      if (b === this.lastBeat) return;
+      this.lastBeat = b;
+      const t = this.t0 + b * beat;
+      this.tone(ctx, t, b % 2 ? 1250 : 1700, 0.03, 'square', 0.03);
+      if (fans && b % 2 === 0) this.hiss(ctx, t, 0.35, 0.05 + Math.min(0.06, fans * 0.015), 900);
+      if (pressure >= 80 && b % 2 === 1) this.tone(ctx, t, 233, 0.12, 'sawtooth', 0.03);
+    } catch (e) {}
+  },
+  reset() { this.t0 = null; this.lastBeat = -1; this.used = {}; },
+};
 function buzz(ms) { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) {} }
 const sfx = {
   pick:  () => { beep(520, 0.06, 'triangle'); buzz(8); },
@@ -903,6 +967,7 @@ class Build extends Phaser.Scene {
     state.shopOpen = false;
     if (!state.grid.some(Boolean)) { this.cameras.main.shake(80, 0.004); sfx.bad(); return; }
     state.phase = 'run';
+    Music.reset();
     state.time = RULES.roundTime;
     state.res.spark = 0;
     state.res.energy = 0;
@@ -1116,7 +1181,7 @@ class Build extends Phaser.Scene {
     }).setOrigin(0.5).setDepth(60);
     this.tweens.add({ targets: pop, x: px + dx * s * 0.45, y: py + dy * s * 0.45, alpha: 0, duration: 650, ease: 'Quad.easeOut', onComplete: () => pop.destroy() });
     this.tweens.add({ targets: v, scaleY: 0.93, scaleX: 1.04, duration: 60, yoyo: true });
-    if (p.out === 'spark') beep(980, 0.04, 'square', 0.05);
+    Music.note(v.type, i);
     return true;
   }
 
@@ -1706,6 +1771,7 @@ class Build extends Phaser.Scene {
     });
     this.cells.forEach(v => { if (v && v.type === 'fan') v.setAlpha(v.svc === 'broken' ? 0.45 : 1); });
     state.res.energy = state.buf.reduce((a, b) => a + b, 0);
+    if (!this.mg) Music.tick(this.cells.filter((v, i) => v && v.type === 'fan' && state.heat[i] < 1).length, state.pressure);
     this.tickHeat(dt);
     this.tickJolt(dt);
     this.mgUpdate(dt);
