@@ -175,7 +175,7 @@ const Music = {
       if (b === this.lastBeat) return;
       this.lastBeat = b;
       const t = this.t0 + b * beat;
-      this.tone(ctx, t, b % 2 ? 1250 : 1700, 0.03, 'square', 0.03);
+      this.tone(ctx, t, b % 2 ? 900 : 1200, 0.025, 'triangle', 0.008);   // yumuşak saat
       if (fans && b % 2 === 0) this.hiss(ctx, t, 0.35, 0.05 + Math.min(0.06, fans * 0.015), 900);
       if (pressure >= 80 && b % 2 === 1) this.tone(ctx, t, 233, 0.12, 'sawtooth', 0.03);
     } catch (e) {}
