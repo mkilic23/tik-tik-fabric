@@ -217,7 +217,10 @@ const RULES = {
   startPlaces: 3,                      // 1. turda yerleştirme hakkı
   placesPerRound: 2,                   // sonraki turlarda eklenen hak
   startMoney: 10,
-  serviceMin: 5, serviceMax: 9,        // makine kaç saniyede bir bakım ister
+  wear: { crank: [7, 12], press: [8, 13], mint: [10, 15], fan: [11, 17] }, // tür başına bakım aralığı (sn)
+  startStagger: 2.2,                   // tur başında makineler arası ek gecikme (sn)
+  requestGap: 1.4,                     // iki bakım uyarısı arası en az süre (sn)
+  maxRequestsPer: 4,                   // her 4 makine için aynı anda en fazla 1 bakım uyarısı
   breakAfter: 5,                       // bakım istedikten kaç saniye sonra durur
   mgTime: 4,
   pressBroken: 4,                      // bozuk makine: saniyede +%4 basınç
@@ -535,7 +538,11 @@ class Build extends Phaser.Scene {
     state.time = RULES.roundTime;
     state.res.spark = 0;
     state.res.energy = 0;
-    this.cells.forEach(v => { if (v) { v.t = 0; v.boost = null; this.resetService(v); } });
+    state.roundTime0 = state.time;
+    this.lastRequestAt = -99;
+    // makineleri karışık sırayla, aralıklı zamanlara yay
+    const list = Phaser.Utils.Array.Shuffle(this.cells.filter(Boolean));
+    list.forEach((v, k) => { v.t = 0; v.boost = null; this.resetService(v); v.needIn = 3 + k * RULES.startStagger + Phaser.Math.FloatBetween(0, 1.5); });
     beep(392, 0.12, 'triangle', 0.2); setTimeout(() => beep(523, 0.12, 'triangle', 0.2), 110); setTimeout(() => beep(784, 0.2, 'triangle', 0.2), 220);
     buzz(30);
     this.refreshPhase();
@@ -733,7 +740,8 @@ class Build extends Phaser.Scene {
   // =====================================================================
   resetService(v) {
     v.svc = 'ok';
-    v.needIn = Phaser.Math.FloatBetween(RULES.serviceMin, RULES.serviceMax);
+    const [a, b] = RULES.wear[v.type];
+    v.needIn = Phaser.Math.FloatBetween(a, b);
     v.brokeIn = RULES.breakAfter;
     this.setAlert(v, null);
   }
@@ -759,6 +767,13 @@ class Build extends Phaser.Scene {
     if (v.svc === 'ok') {
       v.needIn -= dt;
       if (v.needIn <= 0) {
+        // aynı anda çok fazla uyarı olmasın: sınır doluysa ya da az önce uyarı geldiyse biraz beklet
+        const n = this.cells.filter(Boolean).length;
+        const cap = Math.max(1, Math.ceil(n / RULES.maxRequestsPer));
+        const open = this.cells.filter(c => c && c.svc !== 'ok').length;
+        const since = (state.roundTime0 - state.time) - (this.lastRequestAt ?? -99);
+        if (open >= cap || since < RULES.requestGap) { v.needIn = Phaser.Math.FloatBetween(0.8, 2.2); return; }
+        this.lastRequestAt = state.roundTime0 - state.time;
         v.svc = 'need'; v.brokeIn = RULES.breakAfter;
         this.setAlert(v, 'need');
         beep(660, 0.06, 'triangle', 0.12); setTimeout(() => beep(660, 0.06, 'triangle', 0.12), 120);
