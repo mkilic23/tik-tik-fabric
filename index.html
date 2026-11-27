@@ -381,7 +381,7 @@ class Build extends Phaser.Scene {
       wordWrap: { width: W * 0.52 },
     }).setOrigin(0, 0.5);
     const bw = Math.min(W * 0.38, 170 * D), bh = rowH * 0.82;
-    this.goBtn = makeButton(this, W - pad - bw / 2, trayY + rowH / 2 + 4 * D, bw, bh, '▶  Başlat', BTN_GO, () => (state.phase === 'run' ? this.finishEarly() : this.startRound()));
+    this.goBtn = makeButton(this, W - pad - bw / 2, trayY + rowH / 2 + 4 * D, bw, bh, '▶  Başlat', BTN_GO, () => this.startRound());
 
     const slotW = (W - pad * 2) / ORDER.length;
     const slotH = H - this.slotTop;
@@ -561,8 +561,8 @@ class Build extends Phaser.Scene {
     const canVent = state.phase === 'build' && state.heat.some(h => h > 0.01);
     this.ventBtn.setAlpha(canVent ? (state.res.money >= RULES.ventCost ? 1 : 0.5) : 0.25);
     const build = state.phase === 'build';
-    this.goBtn.setVisible(build || this.canFinish());
-    this.goBtn.label.setText(build ? '▶  Başlat' : `✓ Bitir +${this.earlyBonus()} 💎`);
+    this.goBtn.setVisible(build);
+    this.goBtn.label.setText('▶  Başlat');
     this.slots.forEach(s => { s.vis.setAlpha(build && state.places > 0 ? 1 : 0.35); s.name.setAlpha(build && state.places > 0 ? 1 : 0.35); s.recipe.setAlpha(s.name.alpha); });
     if (build) {
       const n = state.grid.filter(Boolean).length;
@@ -1521,12 +1521,8 @@ class Build extends Phaser.Scene {
     const prev = Math.ceil(state.time + dt);
     if (Math.ceil(state.time) !== prev && state.time <= 5 && state.time > 0) { beep(1200, 0.05, 'square', 0.1); buzz(6); }
     this.updateHud(false);
-    const can = this.canFinish();
-    if (can !== this.goBtn.visible || (can && (this.lastBonus !== this.earlyBonus()))) {
-      if (can && !this.goBtn.visible) { this.hint.setText('Hedef tuttu! Bitir ya da para için devam et.'); beep(880, 0.1, 'triangle', 0.18); buzz(20); this.goBtn.setScale(1.2); this.tweens.add({ targets: this.goBtn, scale: 1, duration: 250, ease: 'Back.easeOut' }); }
-      this.lastBonus = this.earlyBonus();
-      this.goBtn.setVisible(can).label.setText(`✓ Bitir +${this.lastBonus} 💎`);
-    }
+    // hedef tutunca tur hemen biter; kalan süre kadar 💎 bonus verilir
+    if (this.canFinish()) { this.finishEarly(); return; }
     if (state.time <= 0) { state.time = 0; this.endRound(); }
   }
 
