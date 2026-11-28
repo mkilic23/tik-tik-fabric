@@ -46,6 +46,7 @@ export class HeatPart {
         h = Math.min(1, h + rate * dt);
         state.heat[i] = h;
       }
+      if (h >= 1 && state.task && state.phase === 'run') state.task.hot = true;
       const svc = h >= 1 ? 'broken' : h >= RULES.needAt ? 'need' : 'ok';
       if (svc !== v.svc) {
         v.svc = svc;
@@ -75,6 +76,7 @@ export class HeatPart {
 
   tickPressure(dt) {
     state.pressure = this.computePressure();
+    if (state.task) state.task.maxP = Math.max(state.task.maxP, state.pressure);
     if (state.pressure >= 100 && !this.dialog) {
       if (!state.pressureTaught) { state.pressureTaught = true; }
       if (!this.mg) state.boomT = (state.boomT ?? this.boomDelay()) - dt;

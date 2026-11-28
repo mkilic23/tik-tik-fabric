@@ -89,6 +89,7 @@ export class MinigamePart {
     mg.done = true;
     ((window as any).__grades = (window as any).__grades || []).push(mg.type + ':' + grade + '@' + mg.t.toFixed(2));
     const v = mg.v, i = mg.i;
+    if (state.task) { state.task.repairs++; if (grade === 'perfect') state.task.perfect++; }
     // sonuç
     const R = GRADES[grade];
     const c = this.cellCenter(i);

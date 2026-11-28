@@ -43,7 +43,8 @@ export function loadRun() {
 // Usta Tamirci: mükemmel alanı çarpanı
 export function PW() { return state.eng === 'tamirci' ? 1.6 : 1; }
 // yıldız: hedef tutunca kalan süreye göre
-export function starsFor(timeLeft, total) { const f = timeLeft / total; return f >= RULES.stars[0] ? 3 : f >= RULES.stars[1] ? 2 : 1; }
+// ★1 hedef, ★2 süre, ★3 levelin görevi
+export function starsFor(timeLeft, total, taskOk) { return 1 + (timeLeft / total >= RULES.timeStar ? 1 : 0) + (taskOk ? 1 : 0); }
 // şu anki levelin süresi
 export function levelTime(r = state.round) { return LEVELS[r].time + (r === state.round ? state.timeBonus || 0 : 0); }
 

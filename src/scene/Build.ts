@@ -1,3 +1,4 @@
+import { LEVELS, taskState, taskText } from '../data/levels';
 import Phaser from 'phaser';
 import { Music, beep, buzz, sfx } from '../audio';
 import { INFO, MACHINES, ORDER } from '../data/machines';
@@ -362,6 +363,15 @@ export class Build extends Phaser.Scene {
       v.tick(dtMs, sp);
     });
     this.slots.forEach(s => { if (s.vis.tick) s.vis.tick(dtMs, 0.25); });
+    // tur boyunca yıldız görevinin ilerlemesi alttaki yazıda
+    if (state.phase === 'run' && state.task && state.tutorialDone) {
+      this.taskT = (this.taskT || 0) + dt;
+      if (this.taskT > 0.3) {
+        this.taskT = 0;
+        const ts = taskState(LEVELS[state.round].task, state.task);
+        this.hint.setText(`★ ${taskText(LEVELS[state.round].task)}\n${ts.failed ? '✗ ' : ts.ok ? '✓ ' : ''}${ts.prog}`).setColor(ts.failed ? '#ff8a7c' : ts.ok ? '#7fe3a5' : T.hudDim);
+      }
+    } else if (this.hint.style.color !== T.hudDim) this.hint.setColor(T.hudDim);
     this.drawDanger(dtMs);
     this.cells.forEach((v, i) => { if (v) this.drawHeat(v, i); });
     this.drawLinks();

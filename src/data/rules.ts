@@ -5,7 +5,7 @@ export const RULES = {
   roundTime: 60,                       // varsayılan; her levelin süresi LEVELS içinde
   goals: LEVELS.map(l => l.goal),      // level hedefleri (✦), bkz. data/levels.ts
   roundsPer: PER_AREA,                 // bölge başına level
-  stars: [0.33, 0.13],                 // hedef tutunca kalan süre oranı: >=%33 3★, >=%13 2★, yoksa 1★
+  timeStar: 0.2,                       // ★2: hedef tutunca sürenin en az %20'si kalmış olmalı (★1 hedef, ★3 level görevi)
   chapters: AREAS,                     // bölge zorluğu: ısınma çarpanı ve patlama geri sayımı
   startPlaces: 3,                      // 1. levelde yerleştirme hakkı
   placesPerRound: 2,                   // her yeni levelde eklenen hak

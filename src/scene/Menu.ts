@@ -1,8 +1,8 @@
 import Phaser from 'phaser';
 import { beep, buzz, sfx } from '../audio';
-import { AREAS, LEVELS, PER_AREA } from '../data/levels';
+import { AREAS, LEVELS, PER_AREA, taskText } from '../data/levels';
 import { BOOST, ENG, UPG } from '../data/progress';
-import { BOSS } from '../data/rules';
+import { BOSS, RULES } from '../data/rules';
 import { BTN_BRASS, BTN_GO, drawMachine, makeButton } from '../draw';
 import { META, clearRun, newArea, saveMeta, saveRun, state } from '../state';
 import { C, D, FONT, THEMES, T } from '../theme';
@@ -147,8 +147,8 @@ export class Menu extends Phaser.Scene {
     const W = this.W, H = this.H, n = this.curLevel(), L = LEVELS[n], A = AREAS[L.area], boss = BOSS[n];
     const k = this.add.container(0, 0).setDepth(300);
     const dim = this.add.rectangle(0, 0, W, H, 0x05070d, 0.72).setOrigin(0).setInteractive();
-    const cw = Math.min(W - this.pad * 2.5, 340 * D), ch = Math.min(cw * 1.42, H * 0.72);
-    const cx = W / 2, cy = H * 0.47, x0 = cx - cw / 2, y0 = cy - ch / 2, R = 26 * D;
+    const cw = Math.min(W - this.pad * 2.5, 340 * D), ch = Math.min(cw * 1.75, H * 0.8);
+    const cx = W / 2, cy = H * 0.46, x0 = cx - cw / 2, y0 = cy - ch / 2, R = 26 * D;
     const g = this.add.graphics();
     g.fillStyle(0x1a1030, 1).fillRoundedRect(x0, y0 + 8 * D, cw, ch, R);
     g.fillStyle(0x5b3fa0, 1).fillRoundedRect(x0, y0, cw, ch, R);
@@ -171,15 +171,24 @@ export class Menu extends Phaser.Scene {
     const fs = Math.round(Math.min(cw * 0.05, 17 * D)), fsS = Math.round(fs * 0.84);
     k.add(this.add.text(cx, y, A.name, { fontFamily: FONT, fontSize: fs + 'px', fontStyle: '700', color: '#ffe3a8' }).setOrigin(0.5, 0));
     y += fs * 1.7;
-    // bilgi kutusu: süre, hedef, patron ya da sıradaki ödül
-    const ih = ch * 0.27, iw = cw - 40 * D;
-    g.fillStyle(0x1a1030, 1).fillRoundedRect(cx - iw / 2, y, iw, ih, 18 * D);
-    k.add(this.add.text(cx, y + ih * 0.24, `⏱ ${L.time} sn     ✦ ${L.goal}`, { fontFamily: FONT, fontSize: Math.round(fs * 1.15) + 'px', fontStyle: '700', color: '#ffffff' }).setOrigin(0.5));
-    let line;
-    if (boss) line = `☠ ${boss.name}\n${boss.desc}`;
-    else { const m = Math.ceil((n + 1) / 5) * 5; line = `🔩 +5 hurda ödülü\n🔒 Level ${m}'de açılır`; }
-    k.add(this.add.text(cx, y + ih * 0.66, line, { fontFamily: FONT, fontSize: fsS + 'px', fontStyle: '700', color: boss ? '#ff8a7c' : '#c9bde8', align: 'center', lineSpacing: 3 * D, wordWrap: { width: iw - 20 * D } }).setOrigin(0.5));
-    y += ih + 16 * D;
+    // bilgi kutusu: süre, hedef, levelin fikri (ve patron)
+    const iw = cw - 40 * D, ix = cx - iw / 2, iy = y;
+    const t1 = this.add.text(cx, iy + 12 * D, `⏱ ${L.time} sn     ✦ ${L.goal}`, { fontFamily: FONT, fontSize: Math.round(fs * 1.1) + 'px', fontStyle: '700', color: '#ffffff' }).setOrigin(0.5, 0);
+    const idea = this.add.text(cx, t1.y + t1.height + 6 * D, (boss ? `☠ ${boss.name}: ${boss.desc}\n` : '') + L.idea, { fontFamily: FONT, fontSize: fsS + 'px', fontStyle: '500', color: boss ? '#ffb3ab' : '#e8defa', align: 'center', lineSpacing: 3 * D, wordWrap: { width: iw - 24 * D } }).setOrigin(0.5, 0);
+    const ih = idea.y + idea.height + 12 * D - iy;
+    g.fillStyle(0x1a1030, 1).fillRoundedRect(ix, iy, iw, ih, 18 * D);
+    k.add([t1, idea]);
+    y += ih + 10 * D;
+    // yıldızlar: ★1 hedef, ★2 süre, ★3 görev
+    const best = META.stars[n] || 0;
+    const rows = ['Hedefi tuttur', `Sürenin %${Math.round(RULES.timeStar * 100)}'si kala bitir`, taskText(L.task)];
+    rows.forEach((r, i) => {
+      const st = this.add.text(ix + 10 * D, y, '★', { fontFamily: FONT, fontSize: Math.round(fs * 1.05) + 'px', fontStyle: '700', color: i < best ? '#ffd84a' : '#ffe3a8' });
+      const tt = this.add.text(ix + 10 * D + fs * 1.5, y + 1 * D, r, { fontFamily: FONT, fontSize: fsS + 'px', fontStyle: i === 2 ? '700' : '500', color: i === 2 ? '#ffe3a8' : '#c9bde8', wordWrap: { width: iw - fs * 2 } });
+      k.add([st, tt]);
+      y += Math.max(st.height, tt.height) + 2 * D;
+    });
+    y += 10 * D;
     // güçlendiriciler
     k.add(this.add.text(cx, y, 'Güçlendirici seç', { fontFamily: FONT, fontSize: fs + 'px', fontStyle: '700', color: '#ffffff' }).setOrigin(0.5, 0));
     y += fs * 1.6;
