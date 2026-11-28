@@ -1,4 +1,4 @@
-import { GOLD, LEVELS, taskState, taskText } from '../data/levels';
+import { GOLD, LEVELS, RES_SYM, goalText, taskState, taskText } from '../data/levels';
 import Phaser from 'phaser';
 import { Music, beep, boomSound, buzz, sfx } from '../audio';
 import { INFO, MACHINES } from '../data/machines';
@@ -66,7 +66,44 @@ export class FlowPart {
   }
 
   // ---------- tur akışı ----------
-  canFinish() { return state.phase === 'run' && state.res.spark >= RULES.goals[state.round]; }
+  canFinish() { return state.phase === 'run' && this.goalMet(); }
+  // hedef: sıralı siparişte bütün adımlar, yoksa ✦ hedefi
+  goalMet() {
+    const L = LEVELS[state.round];
+    if (L.order) return !!state.ord && state.ord.step >= L.order.length;
+    return state.res.spark >= RULES.goals[state.round];
+  }
+  goalFrac() {
+    const L = LEVELS[state.round];
+    if (!L.order) return Math.min(1, state.res.spark / RULES.goals[state.round]);
+    const o = state.ord; if (!o) return 0;
+    if (o.step >= L.order.length) return 1;
+    return (o.step + Math.min(1, this.orderGot() / L.order[o.step].n)) / L.order.length;
+  }
+  // 📋 sıralı sipariş: şu anki adımda üretilen miktar
+  prodOf(res) { return res === 'money' ? (state.task ? state.task.earned : 0) : state.res.spark; }
+  orderGot() { const L = LEVELS[state.round], o = state.ord; if (!o || o.step >= L.order.length) return 0; return Math.max(0, this.prodOf(L.order[o.step].res) - o.base); }
+  tickOrder() {
+    const L = LEVELS[state.round], o = state.ord;
+    if (!L.order || !o || o.step >= L.order.length) return;
+    if (this.orderGot() < L.order[o.step].n) return;
+    o.step++;
+    if (o.step < L.order.length) {
+      o.base = this.prodOf(L.order[o.step].res);
+      const nx = L.order[o.step];
+      this.flashTip(`📋 Sipariş ${o.step}/${L.order.length} tamam!`, `Sıradaki: ${RES_SYM[nx.res]} ${nx.n} ${nx.res === 'money' ? 'üret (Basıcı)' : 'üret (Pres)'}.`, 0x7fd4e0, 2600);
+      [659, 880, 1175].forEach((f, k) => setTimeout(() => beep(f, 0.09, 'triangle', 0.14), k * 80)); buzz([15, 20, 15]);
+    }
+  }
+  // 🏁 Paslı Rıza yarışı: onun çubuğu ilerler; hedefe senden önce ulaşırsa level kaybedilir
+  tickRace(dt) {
+    const L = LEVELS[state.round];
+    if (!L.race || state.rival == null || state.goalHitT != null || this.dialog) return;
+    const goal = RULES.goals[state.round], t = levelTime() - state.time;
+    const wob = 1 + 0.35 * Math.sin(t * 0.45) * Math.sin(t * 0.17 + 1);   // bazen hızlanır, bazen yavaşlar
+    state.rival = Math.min(goal, state.rival + goal / (levelTime() * L.race) * wob * dt);
+    if (state.rival >= goal) { state.rivalWon = true; this.endRound(); }
+  }
   // erken bitirme bonusu hedefin tutulduğu ana göre (göreve devam etmek bonusu azaltmaz)
   earlyBonus() { return Math.floor(Math.max(0, state.goalHitT ?? state.time) / RULES.bonusEvery); }
   finishEarly() {
@@ -100,9 +137,17 @@ export class FlowPart {
     });
     state.joltT = BOSS[state.round] && BOSS[state.round].jolt;
     // 3. yıldız görevi: başta gösterilir, tur boyunca alttaki yazıda ilerler
-    const taskTip = () => this.flashTip('★ Yıldız görevi', taskText(LEVELS[state.round].task) + '. Altta ilerlemesini görürsün.', 0xffd84a, 3500);
-    if (BOSS[state.round]) { this.flashTip('☠ Patron leveli: ' + BOSS[state.round].name, BOSS[state.round].desc, 0xe0564a, 3200, () => { if (state.phase === 'run' && state.tutorialDone) taskTip(); }); }
-    else if (state.tutorialDone) taskTip();
+    const L = LEVELS[state.round];
+    state.ord = L.order ? { step: 0, base: 0 } : null;          // 📋 sıralı sipariş
+    state.rival = L.race ? 0 : null; state.rivalWon = false;     // 🏁 Rıza yarışı
+    // başta sırayla ipuçları: patron, levelin özel kuralı, yıldız görevi
+    const tips = [];
+    if (BOSS[state.round]) tips.push(['☠ Patron leveli: ' + BOSS[state.round].name, BOSS[state.round].desc, 0xe0564a, 3200]);
+    if (L.order) tips.push(['📋 Sıralı sipariş', `Önce ${goalText(L)} sırayla. Üstteki çubuk sadece sıradaki adımı gösterir.`, 0x7fd4e0, 4200]);
+    if (L.race) tips.push(['🏁 Paslı Rıza ile yarış', 'Üstteki kırmızı çubuk Rıza\'nın siparişi. Hedefe ondan önce ulaşırsan kazanırsın!', 0xe0564a, 4200]);
+    if (state.tutorialDone) tips.push(['★ Yıldız görevi', taskText(L.task) + '. Altta ilerlemesini görürsün.', 0xffd84a, 3500]);
+    const next = () => { const t = tips.shift(); if (t && state.phase === 'run') this.flashTip(t[0], t[1], t[2], t[3], next); };
+    next();
     beep(392, 0.12, 'triangle', 0.2); setTimeout(() => beep(523, 0.12, 'triangle', 0.2), 110); setTimeout(() => beep(784, 0.2, 'triangle', 0.2), 220);
     buzz(30);
     this.refreshPhase();
@@ -113,10 +158,11 @@ export class FlowPart {
     this.countText.setVisible(false);
     this.cells.forEach(v => { if (v) { this.setAlert(v, null); v.setAlpha(1); v.svc = 'ok'; } });
     const goal = RULES.goals[state.round];
-    const won = state.res.spark >= goal;
+    const won = this.goalMet() && !state.rivalWon;
+    const frac = this.goalFrac();
     const before = state.pressure;
     // tur arası: makineler biraz soğur; hedef tutmazsa eksik oranında ısınır
-    const miss = won ? 0 : 1 - state.res.spark / goal;
+    const miss = won ? 0 : 1 - frac;
     state.grid.forEach((t, i) => {
       if (!t) return;
       const h = state.heat[i] * RULES.carryHeat;
@@ -125,7 +171,7 @@ export class FlowPart {
     state.pressure = this.computePressure();
     const delta = Math.round(state.pressure - before);
     state.phase = 'end';
-    state.result = { won, spark: state.res.spark, goal, bonus, delta, round: state.round, last: state.round === RULES.goals.length - 1 };
+    state.result = { won, spark: state.res.spark, goal, frac, rival: !!state.rivalWon, ord: state.ord ? state.ord.step : null, bonus, delta, round: state.round, last: state.round === RULES.goals.length - 1 };
     if (state.pressure >= 100 && !won) { this.explode(); return; }
     if (won) {
       // level geçildi: yıldız, hurda ve kumbara
@@ -222,9 +268,10 @@ export class FlowPart {
     const n = R.round + 1;
     let title, big, sub, label, style, action;
     if (R.boom || !R.won) {
-      title = R.boom ? 'FABRİKA PATLADI!' : 'Hedef tutmadı';
-      big = R.boom ? `Level ${n}` : `✦ ${R.spark} / ${R.goal}`;
+      title = R.boom ? 'FABRİKA PATLADI!' : R.rival ? 'Paslı Rıza kazandı!' : 'Hedef tutmadı';
+      big = R.boom ? `Level ${n}` : R.ord != null ? `📋 Sipariş ${R.ord}/${LEVELS[R.round].order.length}` : `✦ ${R.spark} / ${R.goal}`;
       sub = R.boom && R.round === 0 ? 'Bir türün bütün makineleri kızınca basınç %100 olur.\nIsınanları mini oyunla soğut, Fan 2×2 alanı korur.'
+        : R.rival ? 'Rıza siparişi senden önce bitirdi.\nTekrar dene: kırmızı çubuktan önce hedefe ulaş!'
         : `Level ${n} tekrar oynanacak.\nFabrika bu levele girerkenki haline döner.`;
       label = '↻  Tekrar dene'; style = BTN_GO; action = 'retry';
       if (state.replay != null) sub = `Yıldız denemesi. Fabrika bu levelin\nbaşındaki haline döner.`;
@@ -236,7 +283,7 @@ export class FlowPart {
       if (R.piggy) extra.push(`Kumbara: +${R.piggy} 💎`);
       extra.push(`+${R.scrap} 🔩 hurda`);
       const chk = ok => ok ? '✓' : '✗';
-      sub = `★ Hedef ✓   ★ Süre ${chk(R.starTime)}   ★ Görev ${chk(R.starTask)}\n` + extra.join('   ') + '\n' + (R.nearBoom ? 'Basınç patladı: görev yıldızı kaçtı.' : R.last ? 'Festival fenerleri senin sayende yanıyor!' : ((R.round + 1) % RULES.roundsPer === 0 ? 'Sonraki: yeni bölge! Fabrikayı sıfırdan kuracaksın.' : BOSS[R.round + 1] ? `Sonraki: ☠ Patron leveli (✦ ${RULES.goals[R.round + 1]})` : `Sonraki: Level ${n + 1} (✦ ${RULES.goals[R.round + 1]})  ·  +${RULES.placesPerRound} hak`));
+      sub = `★ Hedef ✓   ★ Süre ${chk(R.starTime)}   ★ Görev ${chk(R.starTask)}\n` + extra.join('   ') + '\n' + (R.nearBoom ? 'Basınç patladı: görev yıldızı kaçtı.' : R.last ? 'Festival fenerleri senin sayende yanıyor!' : ((R.round + 1) % RULES.roundsPer === 0 ? 'Sonraki: yeni bölge! Fabrikayı sıfırdan kuracaksın.' : BOSS[R.round + 1] ? `Sonraki: ☠ Patron leveli (${goalText(LEVELS[R.round + 1])})` : `Sonraki: Level ${n + 1} (${goalText(LEVELS[R.round + 1])})  ·  +${RULES.placesPerRound} hak`));
       label = R.last ? 'Haritaya dön' : 'Dükkana git  ▶'; style = BTN_GO; action = R.last ? 'map' : 'next';
       if (R.bits !== 7) sub = sub.replace('\n', `\nToplam: ${'★'.repeat(bitCount(R.bits))}${'☆'.repeat(3 - bitCount(R.bits))}${R.newStars ? `  (+${R.newStars} yeni)` : ''}\n`);
       if (state.replay != null) {

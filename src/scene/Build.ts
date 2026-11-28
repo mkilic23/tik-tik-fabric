@@ -1,4 +1,4 @@
-import { LEVELS, taskState, taskText } from '../data/levels';
+import { LEVELS, RES_SYM, goalText, taskState, taskText } from '../data/levels';
 import Phaser from 'phaser';
 import { Music, beep, buzz, sfx } from '../audio';
 import { INFO, MACHINES, ORDER } from '../data/machines';
@@ -157,8 +157,8 @@ export class Build extends Phaser.Scene {
       return;
     }
     if (state.shopOpen) { this.openShop(); return; }
-    if (state.retry) this.flashTip(`Level ${n} tekrar`, `Fabrika bu levele girerkenki haline döndü. Hedef: ✦ ${RULES.goals[state.round]}`, 0x5fd38a, 3000);
-    else if (state.round > 0) this.flashTip(`Level ${n}`, `Hedef: ✦ ${RULES.goals[state.round]}. Hazırsan ▶ Başlat.`, 0x5fd38a, 2500);
+    if (state.retry) this.flashTip(`Level ${n} tekrar`, `Fabrika bu levele girerkenki haline döndü. Hedef: ${goalText(LEVELS[state.round])}`, 0x5fd38a, 3000);
+    else if (state.round > 0) this.flashTip(`Level ${n}`, `Hedef: ${goalText(LEVELS[state.round])}. Hazırsan ▶ Başlat.`, 0x5fd38a, 2500);
     state.retry = false;
   }
 
@@ -303,7 +303,9 @@ export class Build extends Phaser.Scene {
   updateHud(force) {
     const r = state.res, goal = RULES.goals[state.round];
     this.roundText.setText(`Bölüm ${this.chapter() + 1} · Level ${state.round + 1}${BOSS[state.round] ? ' ☠' : ''}`).setColor(BOSS[state.round] ? (state.theme === 'light' ? '#c0392b' : '#ff8a7c') : T.hud);
-    const b = this.bar, g = this.barG, f = Math.min(1, r.spark / goal);
+    const LV = LEVELS[state.round], o = state.ord;
+    const ordStep = LV.order && o && o.step < LV.order.length ? LV.order[o.step] : null;
+    const b = this.bar, g = this.barG, f = ordStep ? Math.min(1, this.orderGot() / ordStep.n) : this.goalFrac();
     g.clear();
     g.fillStyle(T.barBg, 1).fillRoundedRect(b.x, b.y, b.w, b.h, b.h / 2);
     if (f > 0) {
@@ -311,7 +313,16 @@ export class Build extends Phaser.Scene {
       g.fillStyle(0xffffff, 0.25).fillRoundedRect(b.x + b.h * 0.3, b.y + b.h * 0.15, Math.max(0, b.w * f - b.h * 0.6), b.h * 0.22, b.h * 0.1);
     }
     g.lineStyle(2 * D, T.barLine, 1).strokeRoundedRect(b.x, b.y, b.w, b.h, b.h / 2);
-    this.sparkText.setText(`✦ ${r.spark} / ${goal}`).setColor(f > 0.45 ? '#1a1405' : T.barText);
+    // 🏁 Rıza'nın çubuğu: ana çubuğun altında ince kırmızı
+    if (LV.race && state.rival != null) {
+      const rf = Math.min(1, state.rival / goal), ry = b.y + b.h + 3 * D, rh = 7 * D;
+      g.fillStyle(T.barBg, 1).fillRoundedRect(b.x, ry, b.w, rh, rh / 2);
+      if (rf > 0) g.fillStyle(0xe0564a, 1).fillRoundedRect(b.x, ry, Math.max(rh, b.w * rf), rh, rh / 2);
+      g.fillStyle(0xffffff, 1).fillTriangle(b.x + b.w * rf, b.y + b.h - 1 * D, b.x + b.w * rf - 4 * D, ry + rh + 5 * D, b.x + b.w * rf + 4 * D, ry + rh + 5 * D);
+    }
+    const label = ordStep ? `📋 ${o.step + 1}/${LV.order.length}: ${RES_SYM[ordStep.res]} ${Math.min(this.orderGot(), ordStep.n)} / ${ordStep.n}`
+      : LV.order ? `📋 Sipariş tamam ✓` : `✦ ${r.spark} / ${goal}`;
+    this.sparkText.setText((LV.race && state.rival != null ? '🏁 ' : '') + label).setColor(f > 0.45 ? '#1a1405' : T.barText);
     this.energyText.setText(`⚡ ${r.energy}`);
     this.moneyText.setText(`💎 ${r.money}`);
     const t = Math.ceil(state.time);
@@ -428,6 +439,9 @@ export class Build extends Phaser.Scene {
     this.tickHeat(dt);
     this.tickJolt(dt);
     this.tickGold(dt);
+    this.tickOrder();
+    this.tickRace(dt);
+    if (state.phase !== 'run') return;
     this.mgUpdate(dt);
     this.tickPressure(dt);
     if (state.phase !== 'run') return;
@@ -480,7 +494,9 @@ export class Build extends Phaser.Scene {
     if (state.phase !== 'build' || state.steamR === state.round) return false;
     const want = LEVELS[state.round].steam || 0;
     state.steamR = state.round; state.steam = [];
-    for (const i of STEAM_SPOTS) { if (state.steam.length >= want) break; if (!state.grid[i]) state.steam.push(i); }
+    // sızıntılar birbirinden en az 2 kare uzak: tek Fan ikisini birden kapatamasın
+    const far = i => state.steam.every(s => Math.max(Math.abs(s % COLS - i % COLS), Math.abs(Math.floor(s / COLS) - Math.floor(i / COLS))) >= 2);
+    for (const i of STEAM_SPOTS) { if (state.steam.length >= want) break; if (!state.grid[i] && far(i)) state.steam.push(i); }
     return true;
   }
   steamInfo() {

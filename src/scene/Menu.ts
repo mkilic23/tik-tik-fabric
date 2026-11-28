@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { beep, buzz, sfx } from '../audio';
-import { AREAS, LEVELS, PER_AREA, taskText } from '../data/levels';
+import { AREAS, LEVELS, PER_AREA, goalText, levelTags, taskText } from '../data/levels';
 import { BOOST, ENG, UPG } from '../data/progress';
 import { BOSS, RULES } from '../data/rules';
 import { BTN_BRASS, BTN_GO, drawMachine, makeButton } from '../draw';
@@ -175,11 +175,13 @@ export class Menu extends Phaser.Scene {
     y += fs * 1.7;
     // bilgi kutusu: süre, hedef, levelin fikri (ve patron)
     const iw = cw - 40 * D, ix = cx - iw / 2, iy = y;
-    const t1 = this.add.text(cx, iy + 12 * D, `⏱ ${L.time} sn     ✦ ${L.goal}`, { fontFamily: FONT, fontSize: Math.round(fs * 1.1) + 'px', fontStyle: '700', color: '#ffffff' }).setOrigin(0.5, 0);
+    const t1 = this.add.text(cx, iy + 12 * D, `⏱ ${L.time} sn     ${goalText(L)}`, { fontFamily: FONT, fontSize: Math.round(fs * 1.1) + 'px', fontStyle: '700', color: '#ffffff' }).setOrigin(0.5, 0);
     const idea = this.add.text(cx, t1.y + t1.height + 6 * D, (boss ? `☠ ${boss.name}: ${boss.desc}\n` : '') + L.idea, { fontFamily: FONT, fontSize: fsS + 'px', fontStyle: '500', color: boss ? '#ffb3ab' : '#e8defa', align: 'center', lineSpacing: 3 * D, wordWrap: { width: iw - 24 * D } }).setOrigin(0.5, 0);
-    const ih = idea.y + idea.height + 12 * D - iy;
+    const tags = levelTags(L);
+    const tg = this.add.text(cx, idea.y + idea.height + 6 * D, tags, { fontFamily: FONT, fontSize: Math.round(fsS * 0.9) + 'px', fontStyle: '700', color: '#ffd84a', align: 'center', wordWrap: { width: iw - 24 * D } }).setOrigin(0.5, 0).setVisible(!!tags);
+    const ih = (tags ? tg.y + tg.height : idea.y + idea.height) + 12 * D - iy;
     g.fillStyle(0x1a1030, 1).fillRoundedRect(ix, iy, iw, ih, 18 * D);
-    k.add([t1, idea]);
+    k.add([t1, idea, tg]);
     y += ih + 10 * D;
     // yıldızlar: ★1 hedef, ★2 süre, ★3 görev
     const bits = starBits(n), again = n !== this.curLevel();
@@ -373,7 +375,7 @@ export class Menu extends Phaser.Scene {
       btn.setDepth(31);
       btn.label.setStroke('#5a1a14', 6 * D).setFontSize(Math.round(lh * 0.42));
       this.tweens.add({ targets: btn, scale: { from: 1, to: 1.04 }, duration: 800, yoyo: true, repeat: -1, ease: 'Sine.inOut' });
-      const info = `⏱ ${L.time} sn  ·  ✦ ${L.goal}`;
+      const info = `⏱ ${L.time} sn  ·  ${goalText(L)}`;
       this.add.text(lx, ly - lh * 0.95, info, { fontFamily: FONT, fontSize: Math.round(lh * 0.24) + 'px', fontStyle: '700', color: '#ffe3a8', stroke: '#1a1030', strokeThickness: 4 * D }).setOrigin(0.5).setDepth(31);
       if (boss) {
         const bb = this.add.graphics().setDepth(32);

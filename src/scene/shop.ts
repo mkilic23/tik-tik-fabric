@@ -3,6 +3,7 @@ import { beep, buzz, sfx } from '../audio';
 import { RES, RULES, SHOP } from '../data/rules';
 import { BTN_BRASS, BTN_GO, makeButton, rivet } from '../draw';
 import { META, saveRun, state } from '../state';
+import { LEVELS, goalText } from '../data/levels';
 import { C, COLS, D, FONT } from '../theme';
 
 // Build sahnesinin bir parçası: yöntemler sahneye eklenir (bkz. scene/Build.ts)
@@ -70,7 +71,7 @@ export class ShopPart {
     const tx = pad + os * 1.15;
     k.add(this.add.text(tx, y + os * 0.1, 'Nuri Usta\'nın Dükkanı', { fontFamily: FONT, fontSize: fsT + 'px', fontStyle: '700', color: '#f0a76a' }));
     const next = state.round + 1;
-    k.add(this.add.text(tx, y + os * 0.1 + fsT * 1.3, `Level ${next} öncesi alışveriş · Hedef ✦ ${RULES.goals[state.round]}`, { fontFamily: FONT, fontSize: fsS + 'px', fontStyle: '500', color: C.dim, wordWrap: { width: W - tx - pad } }));
+    k.add(this.add.text(tx, y + os * 0.1 + fsT * 1.3, `Level ${next} öncesi alışveriş · Hedef ${goalText(LEVELS[state.round])}`, { fontFamily: FONT, fontSize: fsS + 'px', fontStyle: '500', color: C.dim, wordWrap: { width: W - tx - pad } }));
     y += os * 1.6;
     // para ve haklar
     const chipH = Math.max(34 * D, fs * 2.1);

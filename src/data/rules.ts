@@ -51,7 +51,7 @@ const BOSS_KIND = {
   jolt: { name: 'Gevşek Vidalar', desc: 'Her 10 saniyede bir makine aniden ısınır.', jolt: 10, joltAmt: 0.35,
         lines: ['Bu makinelerin vidaları gevşemiş... Bu levelde ara ara bir makine aniden ısınacak.', 'Gözünü dört aç, kırmızı parlayanı hemen soğut!'] },
   final: { name: 'Final: Sıcak ve Gevşek', desc: '%25 hızlı ısınma ve her 12 saniyede ani ısınma.', heat: 1.25, jolt: 12, joltAmt: 0.3,
-        lines: ['Final leveli evlat! Hem hava sıcak hem vidalar gevşek.', 'Bunu da atlatırsak festivalin bütün fenerleri bizden. Haydi!'] },
+        lines: ['Final leveli evlat! Hem hava sıcak hem vidalar gevşek.', 'Paslı Rıza da dostça son bir yarış istiyor: kırmızı çubuğundan önce bitir!', 'Bunu da atlatırsak festivalin bütün fenerleri bizden. Haydi!'] },
 };
 // patron levelleri: level numarası (0'dan) -> patron etkisi
 export const BOSS = {};

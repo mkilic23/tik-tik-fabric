@@ -32,7 +32,7 @@ const PLAN = [
   // Bölge 1: öğrenme
   ['Krank enerjiyi, Pres kıvılcımı yapar. Bağla, başlat, ilk tamirlerini yap.', { type: 'perfect', n: 2 }],
   ['Basıcı tanıtımı: kıvılcımın yanında biraz da 💎 üret.', { type: 'money', n: 4 }],
-  ['💨 Buhar sızıntısı! Yanındaki makineler hızlı ısınır. Fan\'ın 2x2 alanı sızıntıyı kapatır. Kimse kızmasın.', { type: 'cool' }],
+  ['Buhar sızıntısı! Yanındaki makineler hızlı ısınır. Fan\'ın 2x2 alanı sızıntıyı kapatır. Kimse kızmasın.', { type: 'cool' }],
   ['İlk uzun vardiya: 90 saniye. Basıncı aşağıda tut.', { type: 'pressure', n: 60 }],
   ['Nefes leveli: acele yok, tamirleri tam zamanında yap.', { type: 'perfect', n: 5 }],
   ['Paslı Rıza 💎 fiyatlarını kırdı. Kasayı dolduralım!', { type: 'money', n: 8 }],
@@ -41,27 +41,27 @@ const PLAN = [
   ['Mükemmel serisi: ellerini ısıt!', { type: 'perfect', n: 8 }],
   ['Nuri Usta\'nın ilk sınavı. Fan ve Yalıtım Plakası tam bugünlük.', { type: 'pressure', n: 70 }],
   // Bölge 2: öncelik ve zamanlama
-  ['Şehir 💎 ile ödüyor. Basıcıları çalıştır.', { type: 'money', n: 8 }],
+  ['Sıralı sipariş: şehir önce ✦, sonra 💎, sonra yine ✦ istiyor. Üstteki çubuk sıradakini gösterir.', { type: 'money', n: 6 }],
   ['Az dokun: makineleri iyi yerleştiren az tamir eder.', { type: 'maxRep', n: 10 }],
   ['Belediye siparişi: basınç düşük kalsın.', { type: 'pressure', n: 55 }],
-  ['Zor vardiya: büyük sipariş ve bir buhar sızıntısı. Makineler kızmasın.', { type: 'cool' }],
+  ['Sıralı sipariş ve bir buhar sızıntısı: tamirleri tam zamanında yap.', { type: 'perfect', n: 8 }],
   ['Nefes leveli: kasaya biraz para koy.', { type: 'money', n: 10 }],
   ['Usta işi: tamirleri tam zamanında yap.', { type: 'perfect', n: 8 }],
-  ['Paslı Rıza ile aynı siparişe girdik. Basınç düşük, kafa soğuk!', { type: 'pressure', n: 50 }],
+  ['Paslı Rıza ile yarış! Aynı siparişi ondan önce bitir. Basınç düşük, kafa soğuk!', { type: 'pressure', n: 60 }],
   ['Uzun vardiya: iki buhar sızıntısı var. Fan\'ları akıllı kullan, kimse kızmasın.', { type: 'cool' }],
-  ['Az dokun: en fazla 15 tamirle hedefi tuttur.', { type: 'maxRep', n: 15 }],
+  ['Büyük sıralı sipariş: sırayla üret, en fazla 15 tamirle bitir.', { type: 'maxRep', n: 15 }],
   ['Paslı Rıza vidaları gevşetmiş! Ani ısınmalara mükemmel tamirle cevap ver.', { type: 'perfect', n: 10 }],
   // Bölge 3: her şey bir arada
   ['Festival hazırlığı: fener başına 💎 lazım.', { type: 'money', n: 12 }],
   ['Fener ustalığı: mükemmel tamir serisi.', { type: 'perfect', n: 10 }],
   ['Festival yaklaşıyor: basıncı düşük tut.', { type: 'pressure', n: 55 }],
-  ['Zor vardiya: kalabalık fabrika ve iki sızıntı. Kimse kızmasın.', { type: 'cool' }],
+  ['Kalabalık fabrika ve iki sızıntı. Basıcılarla kasayı doldur.', { type: 'money', n: 12 }],
   ['✨ Altın saat festivali: sık sık altın saat! Festival kasası dolsun.', { type: 'money', n: 15 }],
   ['Az dokun: iyi kurulmuş fabrika kendi kendine çalışır.', { type: 'maxRep', n: 16 }],
   ['İki sızıntılı vardiya: Fan\'larla kapat, basınç %50\'yi geçmesin.', { type: 'pressure', n: 50 }],
   ['Uzun vardiya: ustalığını göster.', { type: 'perfect', n: 14 }],
   ['Finalden önce son prova: kimse kızmasın.', { type: 'cool' }],
-  ['Fenerler Gecesi! Festivalin bütün fenerleri bizden.', { type: 'pressure', n: 75 }],
+  ['Fenerler Gecesi! Paslı Rıza da son kez yarışmak istiyor. Festivalin bütün fenerleri bizden.', { type: 'pressure', n: 75 }],
 ];
 LEVELS.forEach((L, i) => { L.idea = PLAN[i][0]; L.task = PLAN[i][1]; });
 
@@ -77,6 +77,30 @@ LEVELS.forEach((L, i) => { L.steam = STEAM[i] || 0; });
 // sızıntı için tercih edilen kareler (ortaya yakın), sonra geri kalanlar
 export const STEAM_SPOTS = [14, 21, 15, 20, 9, 26, 13, 22, 8, 27, 16, 19];
 for (let i = 0; i < 36; i++) if (!STEAM_SPOTS.includes(i)) STEAM_SPOTS.push(i);
+
+// 📋 Sıralı sipariş: hedef sırayla tamamlanan 3 adım (önce ✦, sonra 💎, sonra yine ✦)
+const ORDER = { 10: 0.35, 13: 0.4, 18: 0.4 };   // level (0'dan) -> ✦ adımı = hedefin bu kadarı
+LEVELS.forEach((L, i) => {
+  L.order = null;
+  if (!ORDER[i]) return;
+  const s = Math.max(4, Math.round(L.goal * ORDER[i])), m = Math.max(3, Math.round(L.goal * ORDER[i] * 0.38));
+  L.order = [{ res: 'spark', n: s }, { res: 'money', n: m }, { res: 'spark', n: s }];
+});
+// 🏁 Paslı Rıza yarışı: Rıza'nın çubuğu, sürenin 'pace' kadarında hedefe ulaşır; ondan önce bitirmelisin
+const RACE = { 16: 0.85, 29: 0.92 };
+LEVELS.forEach((L, i) => { L.race = RACE[i] || 0; });
+export const RES_SYM = { spark: '✦', money: '💎' };
+// hedefin kısa yazısı: "✦ 40" ya da "✦6 → 💎3 → ✦6"
+export function goalText(L) { return L.order ? L.order.map(o => RES_SYM[o.res] + o.n).join(' → ') : `✦ ${L.goal}`; }
+// level penceresindeki küçük etiketler
+export function levelTags(L) {
+  const t = [];
+  if (L.order) t.push('📋 Sıralı sipariş');
+  if (L.race) t.push('🏁 Rıza yarışı');
+  if (L.steam) t.push('💨 x' + L.steam);
+  if (L.gold) t.push('✨ Altın saat');
+  return t.join('   ');
+}
 
 // görevin yazısı
 export function taskText(t) {
