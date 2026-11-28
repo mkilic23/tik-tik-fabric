@@ -14,13 +14,13 @@ export const STORY = {
   // her levelden önce Nuri Usta'nın anlattıkları (level numarası 0'dan)
   rounds: {
     1: ['İlk kıvılcımlar fenerciye ulaştı, adam çok memnun!', 'Bu sefer biraz daha fazla istiyor. Bir Pres daha koymayı düşün evlat.'],
-    2: ['Mahallede adımız duyulmaya başladı.', 'Ama karşı sokaktaki Paslı Rıza da fener işine göz dikmiş. Ondan geri kalmayalım!'],
-    3: ['Paslı Rıza dükkânın önünden geçerken sırıttı. "Bu sıcakta o hurdalar patlar!" dedi.'],
-    5: ['Belediyeden mektup geldi: şehrin bütün sokak fenerleri bize emanet!', 'Paslı Rıza hırsından çatlıyor. Halkalarla üretimi hızlandıralım.'],
-    6: ['Dün gece biri atölyenin önünde dolaşıyordu... Paslı Rıza mı acaba?', 'Neyse, biz işimize bakalım. Makineleri sık sık kontrol et.'],
-    7: ['Sabah geldim, vidaların yarısı gevşemiş! Bu kesin Paslı Rıza\'nın işi.'],
-    9: ['Festival komitesi atölyeyi ziyarete geldi. Hepsi ağzı açık izledi!', 'Böyle gidersek festival afişine adımızı yazacaklar.'],
-    10: ['Paslı Rıza bugün özür dilemeye geldi. Ona bir Krank hediye ettim, ne de olsa komşuyuz.', 'Finalden önce bir level daha. Dinlen, soğut, hazırlan!'],
+    3: ['Mahallede adımız duyulmaya başladı.', 'Ama karşı sokaktaki Paslı Rıza da fener işine göz dikmiş. Ondan geri kalmayalım!'],
+    6: ['Paslı Rıza dükkânın önünden geçerken sırıttı. "Bu sıcakta o hurdalar patlar!" dedi.'],
+    11: ['Belediyeden mektup geldi: şehrin bütün sokak fenerleri bize emanet!', 'Paslı Rıza hırsından çatlıyor. Halkalarla üretimi hızlandıralım.'],
+    14: ['Dün gece biri atölyenin önünde dolaşıyordu... Paslı Rıza mı acaba?', 'Neyse, biz işimize bakalım. Makineleri sık sık kontrol et.'],
+    17: ['Sabah geldim, vidaların yarısı gevşemiş! Bu kesin Paslı Rıza\'nın işi.'],
+    21: ['Festival komitesi atölyeyi ziyarete geldi. Hepsi ağzı açık izledi!', 'Böyle gidersek festival afişine adımızı yazacaklar.'],
+    26: ['Paslı Rıza bugün özür dilemeye geldi. Ona bir Krank hediye ettim, ne de olsa komşuyuz.', 'Finalden önce bir level daha. Dinlen, soğut, hazırlan!'],
   },
   chapter: [
     null,

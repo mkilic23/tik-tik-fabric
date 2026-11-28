@@ -1,14 +1,12 @@
+import { AREAS, LEVELS, PER_AREA } from './levels';
+
 // ---------- oyun kuralları (denge için tek yer) ----------
 export const RULES = {
-  roundTime: 60,                       // saniye
-  goals: [12, 22, 35, 50, 70, 90, 115, 140, 170, 200, 235, 270], // 12 level hedefi (✦): 3 bölüm x 4 level, her level tek tur
-  roundsPer: 4,                        // bölüm başına level
-  stars: [20, 8],                      // hedef tutunca kalan süre: >=20 sn 3★, >=8 sn 2★, yoksa 1★
-  chapters: [                          // bölüm zorluğu: ısınma çarpanı ve patlama geri sayımı
-    { name: 'Atölye', heat: 0.7, boom: 5 },
-    { name: 'Şehir Siparişi', heat: 0.9, boom: 4 },
-    { name: 'Fenerler Festivali', heat: 1.0, boom: 3 },
-  ],
+  roundTime: 60,                       // varsayılan; her levelin süresi LEVELS içinde
+  goals: LEVELS.map(l => l.goal),      // level hedefleri (✦), bkz. data/levels.ts
+  roundsPer: PER_AREA,                 // bölge başına level
+  stars: [0.33, 0.13],                 // hedef tutunca kalan süre oranı: >=%33 3★, >=%13 2★, yoksa 1★
+  chapters: AREAS,                     // bölge zorluğu: ısınma çarpanı ve patlama geri sayımı
   startPlaces: 3,                      // 1. levelde yerleştirme hakkı
   placesPerRound: 2,                   // her yeni levelde eklenen hak
   startMoney: 10,
@@ -45,15 +43,18 @@ export const SHOP = {
 };
 export const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]];  // 0 yukarı, 1 sağ, 2 aşağı, 3 sol
 export const DEFAULT_ROT = { crank: 1, press: 0, mint: 0, fan: 0 };
-// patron turları (her bölümün son turu)
-export const BOSS = {
-  3:  { name: 'Sıcak Hava Dalgası', desc: 'Bu levelde makineler %40 hızlı ısınır.', heat: 1.4,
+// patron etkileri (her bölgenin 10. leveli)
+const BOSS_KIND = {
+  heat: { name: 'Sıcak Hava Dalgası', desc: 'Bu levelde makineler %40 hızlı ısınır.', heat: 1.4,
         lines: ['Eyvah, sıcak hava dalgası geliyor! Bu levelde bütün makineler %40 daha hızlı ısınacak.', 'Fan ve Yalıtım Plakası tam bugünlük. Hazırlan!'] },
-  7:  { name: 'Gevşek Vidalar', desc: 'Her 10 saniyede bir makine aniden ısınır.', jolt: 10, joltAmt: 0.35,
+  jolt: { name: 'Gevşek Vidalar', desc: 'Her 10 saniyede bir makine aniden ısınır.', jolt: 10, joltAmt: 0.35,
         lines: ['Bu makinelerin vidaları gevşemiş... Bu levelde ara ara bir makine aniden ısınacak.', 'Gözünü dört aç, kırmızı parlayanı hemen soğut!'] },
-  11: { name: 'Final: Sıcak ve Gevşek', desc: '%25 hızlı ısınma ve her 12 saniyede ani ısınma.', heat: 1.25, jolt: 12, joltAmt: 0.3,
+  final: { name: 'Final: Sıcak ve Gevşek', desc: '%25 hızlı ısınma ve her 12 saniyede ani ısınma.', heat: 1.25, jolt: 12, joltAmt: 0.3,
         lines: ['Final leveli evlat! Hem hava sıcak hem vidalar gevşek.', 'Bunu da atlatırsak festivalin bütün fenerleri bizden. Haydi!'] },
 };
+// patron levelleri: level numarası (0'dan) -> patron etkisi
+export const BOSS = {};
+LEVELS.forEach((l, i) => { if (l.boss) BOSS[i] = BOSS_KIND[l.boss]; });
 export const GRADES = {
   perfect: { label: 'MÜKEMMEL!', color: '#7fe3a5', mult: 2,   secs: 6 },
   good:    { label: 'İYİ',       color: '#ffe3a8', mult: 1.4, secs: 4 },

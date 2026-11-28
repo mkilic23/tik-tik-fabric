@@ -4,7 +4,7 @@ import { INFO, MACHINES } from '../data/machines';
 import { BOSS, DIRS, PROD, RES, RULES } from '../data/rules';
 import { STORY } from '../data/story';
 import { BTN_BRASS, BTN_GO, makeButton } from '../draw';
-import { META, clearRun, loadRun, newRun, saveMeta, saveRun, starsFor, state } from '../state';
+import { META, clearRun, levelTime, loadRun, newArea, newRun, saveMeta, saveRun, starsFor, state } from '../state';
 import { C, COLS, D, FONT, ROWS } from '../theme';
 
 // Build sahnesinin bir parçası: yöntemler sahneye eklenir (bkz. scene/Build.ts)
@@ -51,11 +51,11 @@ export class FlowPart {
       } else if (presses.every(i => this.outputBlocked(i))) {
         this.setBanner('⚠ Pres\'in çıkışı kapalı!', 'Sarı ok boş bir kareyi göstermeli; kıvılcım oradan çıkar. Pres\'e dokunup döndür.', 0xe0564a);
       } else {
-        this.setBanner('3 / 3   Hazırsın! ▶ Başlat\'a bas', `Mavi çizgi = enerji bağlantısı. 60 saniyede ✦ ${RULES.goals[0]} topla.`, 0x5fd38a);
+        this.setBanner('3 / 3   Hazırsın! ▶ Başlat\'a bas', `Mavi çizgi = enerji bağlantısı. ${levelTime(0)} saniyede ✦ ${RULES.goals[0]} topla.`, 0x5fd38a);
         this.goRing.setVisible(true);
       }
     } else if (state.phase === 'run') {
-      if (state.time > RULES.roundTime - 9) {
+      if (state.time > levelTime() - 9) {
         this.setBanner('Makineler çalıştıkça ısınır', 'Alttaki çubuk ısıyı gösterir. Dolunca ! çıkar: dokun, mini oyunla soğut. Tamamen ısınan makine durur.', 0xffc23d);
       } else {
         this.banner.setVisible(false);
@@ -81,7 +81,7 @@ export class FlowPart {
     if (!state.grid.some(Boolean)) { this.cameras.main.shake(80, 0.004); sfx.bad(); return; }
     state.phase = 'run';
     Music.reset();
-    state.time = RULES.roundTime;
+    state.time = levelTime();
     state.res.spark = 0;
     state.res.energy = 0;
     state.buf.fill(0);
@@ -122,9 +122,11 @@ export class FlowPart {
     if (won) {
       // level geçildi: yıldız, hurda ve kumbara
       const R = state.result, n = state.round;
-      R.stars = starsFor(state.time);
+      R.stars = starsFor(state.time, levelTime());
+      const first = !(META.stars[n] > 0);
       META.stars[n] = Math.max(META.stars[n] || 0, R.stars);
-      R.scrap = this.awardScrap(R.stars, !!BOSS[n]);
+      R.scrap = 2 + R.stars + (BOSS[n] ? 5 : 0) + ((n + 1) % 5 === 0 && first ? 5 : 0);   // her 5 levelde bir +5 ödül (ilk geçişte)
+      META.scrap += R.scrap;
       R.piggy = META.lv.money; state.res.money += R.piggy;
       saveMeta();
     }
@@ -215,7 +217,7 @@ export class FlowPart {
       if (R.bonus) extra.push(`Erken bitirme: +${R.bonus} 💎`);
       if (R.piggy) extra.push(`Kumbara: +${R.piggy} 💎`);
       extra.push(`+${R.scrap} 🔩 hurda`);
-      sub = extra.join('   ') + '\n' + (R.last ? 'Festival fenerleri senin sayende yanıyor!' : (BOSS[R.round + 1] ? `Sonraki: ☠ Patron leveli (✦ ${RULES.goals[R.round + 1]})` : `Sonraki: Level ${n + 1} (✦ ${RULES.goals[R.round + 1]})  ·  +${RULES.placesPerRound} hak`));
+      sub = extra.join('   ') + '\n' + (R.last ? 'Festival fenerleri senin sayende yanıyor!' : ((R.round + 1) % RULES.roundsPer === 0 ? 'Sonraki: yeni bölge! Fabrikayı sıfırdan kuracaksın.' : BOSS[R.round + 1] ? `Sonraki: ☠ Patron leveli (✦ ${RULES.goals[R.round + 1]})` : `Sonraki: Level ${n + 1} (✦ ${RULES.goals[R.round + 1]})  ·  +${RULES.placesPerRound} hak`));
       label = R.last ? 'Haritaya dön' : 'Dükkana git  ▶'; style = BTN_GO; action = R.last ? 'map' : 'next';
     }
     const t1 = this.add.text(cx, cy - ch * 0.36, title, { fontFamily: FONT, fontSize: Math.round(cw * (R.boom ? 0.088 : 0.09)) + 'px', fontStyle: '700', color: good ? '#7fe3a5' : R.boom ? '#ffb36b' : '#ff8a7c' }).setOrigin(0.5);
@@ -239,21 +241,23 @@ export class FlowPart {
       // kaybedince: fabrika levelin başındaki haline döner
       if (!loadRun()) { newRun(); }
       state.retry = action === 'retry';
-      if (action === 'map') state.screen = 'map';
+      if (action === 'map') { this.scene.start('menu', { tab: 'map' }); return; }
       this.scene.restart();
       return;
     }
-    if (R.last) { clearRun(); newRun(); state.screen = 'map'; this.scene.restart(); return; }
+    if (R.last) { clearRun(); newRun(); this.scene.start('menu', { tab: 'home' }); return; }
     state.round++;
+    const newArea_ = state.round % RULES.roundsPer === 0;
+    if (newArea_) newArea(state.round / RULES.roundsPer);   // yeni bölge: boş fabrika
+    else state.places += RULES.placesPerRound;
     state.phase = 'build';
-    state.places += RULES.placesPerRound;
     state.res.spark = 0;
     state.res.energy = 0;
-    state.time = RULES.roundTime;
+    state.time = levelTime();
     state.result = null;
     state.offers = null; state.rerolls = 0; state.shopOpen = true;
     saveRun();   // yeni levelin başlangıç kaydı
-    if (action === 'map') { state.screen = 'map'; this.scene.restart(); return; }
+    if (action === 'map') { this.scene.start('menu', { tab: 'map' }); return; }
     this.refreshPhase();
     // Nuri Usta önce az önceki levele tepki verir, hikâyeyi anlatır, sonra dükkan açılır
     const lines = [];

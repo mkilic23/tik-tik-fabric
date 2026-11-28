@@ -1,3 +1,4 @@
+import { LEVELS } from '../data/levels';
 import Phaser from 'phaser';
 import { beep, buzz } from '../audio';
 import { BOSS, RULES } from '../data/rules';
@@ -41,7 +42,7 @@ export class HeatPart {
         if (v.boost && state.time > v.boost.until) rate *= 1.25;
         if (this.hasRingNear(i)) rate *= RULES.ringHeat;
         if (state.mod[i] === 'plate') rate *= RULES.plateHeat;
-        rate *= RULES.chapters[this.chapter()].heat * ((BOSS[state.round] && BOSS[state.round].heat) || 1);
+        rate *= LEVELS[state.round].heat * ((BOSS[state.round] && BOSS[state.round].heat) || 1);
         h = Math.min(1, h + rate * dt);
         state.heat[i] = h;
       }

@@ -4,16 +4,14 @@ import { INFO, MACHINES, ORDER } from '../data/machines';
 import { BOSS, PROD, RULES } from '../data/rules';
 import { STORY } from '../data/story';
 import { BTN_GO, drawMachine, makeButton, rivet } from '../draw';
-import { META, saveMeta, saveRun, state } from '../state';
+import { META, levelTime, saveMeta, saveRun, state } from '../state';
 import { C, COLS, D, FONT, ROWS, T, THEMES } from '../theme';
 import { ShopPart } from './shop';
-import { MetaPart } from './meta';
 import { FlowPart } from './flow';
 import { PlacementPart } from './placement';
 import { HeatPart } from './heat';
 import { DialogPart } from './dialog';
 import { MinigamePart } from './minigames';
-import { MapPart } from './map';
 
 export class Build extends Phaser.Scene {
   [key: string]: any;
@@ -23,7 +21,7 @@ export class Build extends Phaser.Scene {
   create() {
     const W = this.scale.width, H = this.scale.height;
     this.W = W; this.H = H;
-    this.dialog = null; this.mg = null; this.shop = null; this.meta = null; this.map = null; this.resultBox = null; this.boomed = false; this.pickMod = null; this.lastP = undefined; // sahne yeniden başlarken eski durum kalmasın
+    this.dialog = null; this.mg = null; this.shop = null; this.meta = null; this.resultBox = null; this.boomed = false; this.pickMod = null; this.lastP = undefined; // sahne yeniden başlarken eski durum kalmasın
 
     const pad = 16 * D;
     this.pad = pad;
@@ -126,9 +124,8 @@ export class Build extends Phaser.Scene {
     this.countText = this.add.text(W / 2, this.gy + this.cell * ROWS / 2, '', { fontFamily: FONT, fontSize: Math.round(this.cell * 0.9) + 'px', fontStyle: '700', color: '#ffe3a8', stroke: '#7a1a12', strokeThickness: 8 * D }).setOrigin(0.5).setDepth(110).setVisible(false);
 
     this.refreshPhase();
-    if (state.screen === 'map') this.openMap();
-    else if (state.screen === 'meta') this.openMeta();
-    else this.enterLevel();
+    if (state.phase === 'build') state.time = levelTime();
+    this.enterLevel();
     (window as any).__scene = this; // test ve hata ayıklama için
   }
 
@@ -189,7 +186,7 @@ export class Build extends Phaser.Scene {
     mg.fillStyle(0xffe3a8, 1).fillTriangle(-tr * 0.55, -tr * 0.05, tr * 0.55, -tr * 0.05, 0, -tr * 0.6).fillRect(-tr * 0.38, -tr * 0.08, tr * 0.76, tr * 0.6);
     mg.fillStyle(state.theme === 'dark' ? 0x2c3654 : 0x2b2340, 1).fillRect(-tr * 0.12, tr * 0.18, tr * 0.24, tr * 0.34);
     mb.add(mg);
-    mb.on('pointerup', () => { if (state.phase === 'build' && !this.dialog && !this.pickMod) { sfx.tap(); this.openMap(); } });
+    mb.on('pointerup', () => { if (state.phase === 'build' && !this.dialog && !this.pickMod) { sfx.tap(); saveRun(); this.scene.start('menu', { tab: 'home' }); } });
     this.mapBtn = mb;
     const fs = Math.round(Math.min(W * 0.042, 17 * D));
 
@@ -411,7 +408,7 @@ export class Build extends Phaser.Scene {
 
   // ---------- dokunma ----------
   onDown(p) {
-    if (this.dialog || this.shop || this.meta || this.map) return;
+    if (this.dialog || this.shop) return;
     if (state.phase === 'end' || state.phase === 'boom') return;
     if (this.mg) { const f = this['mgDown_' + this.mg.type]; if (f) f.call(this, this.mg, p); return; }
     if (state.phase === 'build' && state.places > 0 && p.y > this.slotTop) {
@@ -451,7 +448,7 @@ export class Build extends Phaser.Scene {
   }
 
   onMove(p) {
-    if (this.dialog || this.shop || this.meta || this.map) return;
+    if (this.dialog || this.shop) return;
     if (this.mg) { const f = this['mgMove_' + this.mg.type]; if (f) f.call(this, this.mg, p); return; }
     if (this.pending && !this.drag) {
       // makineler yalnızca inşa evresinde taşınır
@@ -480,7 +477,7 @@ export class Build extends Phaser.Scene {
   }
 
   onUp(p) {
-    if (this.dialog || this.shop || this.meta || this.map) return;
+    if (this.dialog || this.shop) return;
     if (this.mg) { const f = this['mgUp_' + this.mg.type]; if (f) f.call(this, this.mg, p); return; }
     if (this.pending && !this.drag) {
       const i = this.pending.i, v = this.cells[i];
@@ -544,7 +541,7 @@ export class Build extends Phaser.Scene {
 }
 
 // parçaların yöntemlerini sahneye ekle
-for (const P of [MapPart, ShopPart, MetaPart, FlowPart, PlacementPart, HeatPart, DialogPart, MinigamePart]) {
+for (const P of [ShopPart, FlowPart, PlacementPart, HeatPart, DialogPart, MinigamePart]) {
   for (const n of Object.getOwnPropertyNames(P.prototype)) {
     if (n !== 'constructor') Object.defineProperty(Build.prototype, n, Object.getOwnPropertyDescriptor(P.prototype, n)!);
   }

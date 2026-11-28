@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { C, D } from './theme';
 import { Build } from './scene/Build';
+import { Menu } from './scene/Menu';
 import { state, META, saveRun, PW } from './state';
 import { Music } from './audio';
 
@@ -19,7 +20,7 @@ function boot() {
     antialias: true,
     scale: { mode: Phaser.Scale.NONE, width: w, height: h, zoom: 1 / D },
     input: { activePointers: 1 },
-    scene: [Build],
+    scene: [Menu, Build],
   });
   let t = null;
   window.addEventListener('resize', () => {

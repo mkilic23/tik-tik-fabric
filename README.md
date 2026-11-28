@@ -20,6 +20,7 @@ npm run build    # dist/index.html: tek dosya, her yerde çalışır
 |---|---|
 | `src/main.ts` | Phaser oyununu başlatır, ekran boyutunu izler, PWA kaydı |
 | `src/theme.ts` | Piksel yoğunluğu (D), ızgara boyutu, renkler, koyu/açık tema |
+| `src/data/levels.ts` | **30 level**: bölgeler, süreler (60/90/120), hedefler, patronlar |
 | `src/data/rules.ts` | **Denge değerleri**: `RULES`, `PROD`, `SHOP`, `BOSS`, `GRADES` |
 | `src/data/machines.ts` | Makine türleri, renkler, tarifler |
 | `src/data/story.ts` | Nuri Usta'nın konuşmaları |
@@ -28,9 +29,8 @@ npm run build    # dist/index.html: tek dosya, her yerde çalışır
 | `src/audio.ts` | Ses efektleri, titreşim, ritimli müzik |
 | `src/draw.ts` | Makine çizimleri ve düğmeler |
 | `src/scene/Build.ts` | Ana sahne: kurulum, üst bilgi, döngü, dokunma |
-| `src/scene/map.ts` | Level haritası (ana ekran), yeni fabrika |
+| `src/scene/Menu.ts` | Menüler: alt çubuk, Atölye ana sayfası, Harita, Dükkan, Ustalar, Rekorlar |
 | `src/scene/shop.ts` | Dükkan sayfası ve modüller |
-| `src/scene/meta.ts` | Nuri Usta'nın Atölyesi (koşular arası) |
 | `src/scene/flow.ts` | Tur akışı, öğretici, patlama, sonuç ekranı, üretim |
 | `src/scene/placement.ts` | Yönler, bağlantılar, Fan alanı |
 | `src/scene/heat.ts` | Isı, basınç, patron etkileri |
