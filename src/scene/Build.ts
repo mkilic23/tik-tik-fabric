@@ -4,7 +4,7 @@ import { Music, beep, buzz, sfx } from '../audio';
 import { INFO, MACHINES, ORDER } from '../data/machines';
 import { BOSS, PROD, RULES } from '../data/rules';
 import { STORY } from '../data/story';
-import { BTN_GO, drawMachine, makeButton, rivet } from '../draw';
+import { BTN_BRASS, BTN_GO, drawMachine, makeButton, rivet } from '../draw';
 import { META, levelTime, saveMeta, saveRun, state } from '../state';
 import { C, COLS, D, FONT, ROWS, T, THEMES } from '../theme';
 import { ShopPart } from './shop';
@@ -31,7 +31,7 @@ export class Build extends Phaser.Scene {
       state.boostPick = null;
       saveRun();
     }
-    this.dialog = null; this.mg = null; this.shop = null; this.meta = null; this.resultBox = null; this.boomed = false; this.pickMod = null; this.lastP = undefined; // sahne yeniden başlarken eski durum kalmasın
+    this.dialog = null; this.mg = null; this.shop = null; this.meta = null; this.choice = null; this.resultBox = null; this.boomed = false; this.pickMod = null; this.lastP = undefined; // sahne yeniden başlarken eski durum kalmasın
 
     const pad = 16 * D;
     this.pad = pad;
@@ -65,6 +65,8 @@ export class Build extends Phaser.Scene {
     this.hl = this.add.graphics().setDepth(5);
     this.linkG = this.add.graphics().setDepth(6);
     this.portL = this.add.graphics().setDepth(28);
+    this.goldG = this.add.graphics().setDepth(9).setBlendMode('ADD');   // altın saat parıltısı (makinelerin altında)
+    this.goldR = this.add.graphics().setDepth(29);                      // altın saat süre halkası
     this.cells = new Array(COLS * ROWS).fill(null);
     this.drawGrid();
 
@@ -188,6 +190,28 @@ export class Build extends Phaser.Scene {
       this.tweens.add({ targets: st, angle: 45, duration: 1200 });
       this.tweens.add({ targets: [k, dim], alpha: 0, delay: 1300, duration: 300, onComplete: () => { k.destroy(); dim.destroy(); done(); } });
     } });
+  }
+
+  // hedef tamam ama görev sürüyor: oyun durur, oyuncu seçer
+  askContinue(ts) {
+    const W = this.W, H = this.H;
+    const k = this.add.container(0, 0).setDepth(110);
+    const dim = this.add.rectangle(0, 0, W, H, 0x05070d, 0.6).setOrigin(0).setInteractive();
+    const cw = Math.min(W - this.pad * 2, 340 * D), ch = cw * 0.78, cx = W / 2, cy = this.gy + this.cell * ROWS / 2;
+    const g = this.add.graphics();
+    g.fillStyle(C.copperDark, 1).fillRoundedRect(cx - cw / 2, cy - ch / 2 + 6 * D, cw, ch, 22 * D);
+    g.fillStyle(0x1d2540, 1).fillRoundedRect(cx - cw / 2, cy - ch / 2, cw, ch, 22 * D);
+    g.lineStyle(3 * D, 0xffd84a, 1).strokeRoundedRect(cx - cw / 2, cy - ch / 2, cw, ch, 22 * D);
+    const fs = Math.round(cw * 0.06);
+    const t1 = this.add.text(cx, cy - ch * 0.36, 'Hedef tamam! ✦', { fontFamily: FONT, fontSize: Math.round(fs * 1.3) + 'px', fontStyle: '700', color: '#7fe3a5' }).setOrigin(0.5);
+    const t2 = this.add.text(cx, cy - ch * 0.14, `★ ${taskText(LEVELS[state.round].task)}\n${ts.prog}`, { fontFamily: FONT, fontSize: fs + 'px', fontStyle: '700', color: '#ffe3a8', align: 'center', lineSpacing: 4 * D, wordWrap: { width: cw - 30 * D } }).setOrigin(0.5);
+    const t3 = this.add.text(cx, cy + ch * 0.06, 'Süre yıldızı şimdiden hesaplandı. Devam edersen sadece görev için oynarsın.', { fontFamily: FONT, fontSize: Math.round(fs * 0.72) + 'px', fontStyle: '500', color: C.dim, align: 'center', wordWrap: { width: cw - 36 * D } }).setOrigin(0.5);
+    const bw = (cw - 40 * D) / 2, bh = Math.min(50 * D, ch * 0.2), by = cy + ch * 0.32;
+    const go = makeButton(this, cx - bw / 2 - 6 * D, by, bw, bh, 'Göreve devam', BTN_GO, () => { state.keepGoing = true; k.destroy(); this.choice = null; sfx.pick(); });
+    const end = makeButton(this, cx + bw / 2 + 6 * D, by, bw, bh, 'Bitir', BTN_BRASS, () => { state.keepGoing = false; k.destroy(); this.choice = null; this.finishEarly(); });
+    k.add([dim, g, t1, t2, t3, go, end]);
+    this.choice = k;
+    [523, 659].forEach((f, i) => setTimeout(() => beep(f, 0.1, 'triangle', 0.15), i * 90)); buzz(20);
   }
 
   toggleTheme() {
@@ -372,13 +396,14 @@ export class Build extends Phaser.Scene {
         this.hint.setText(`★ ${taskText(LEVELS[state.round].task)}\n${ts.failed ? '✗ ' : ts.ok ? '✓ ' : ''}${ts.prog}`).setColor(ts.failed ? '#ff8a7c' : ts.ok ? '#7fe3a5' : T.hudDim);
       }
     } else if (this.hint.style.color !== T.hudDim) this.hint.setColor(T.hudDim);
+    this.drawGold();
     this.drawDanger(dtMs);
     this.cells.forEach((v, i) => { if (v) this.drawHeat(v, i); });
     this.drawLinks();
     this.chimneySmoke(dt);
     this.tutT = (this.tutT || 0) + dt;
     if (this.tutT > 0.25) { this.tutT = 0; this.tutorial(); }
-    if (state.phase !== 'run' || this.dialog) { if (state.phase === 'build') this.updateHud(false); return; }
+    if (state.phase !== 'run' || this.dialog || this.choice) { if (state.phase === 'build') this.updateHud(false); return; }
 
     state.time -= dt;
     // önce Krank'lar, sonra tüketiciler
@@ -396,14 +421,21 @@ export class Build extends Phaser.Scene {
     if (!this.mg) Music.tick(this.cells.filter((v, i) => v && v.type === 'fan' && state.heat[i] < 1).length, state.pressure);
     this.tickHeat(dt);
     this.tickJolt(dt);
+    this.tickGold(dt);
     this.mgUpdate(dt);
     this.tickPressure(dt);
     if (state.phase !== 'run') return;
     const prev = Math.ceil(state.time + dt);
     if (Math.ceil(state.time) !== prev && state.time <= 5 && state.time > 0) { beep(1200, 0.05, 'square', 0.1); buzz(6); }
     this.updateHud(false);
-    // hedef tutunca tur hemen biter; kalan süre kadar 💎 bonus verilir
-    if (this.canFinish()) { this.finishEarly(); return; }
+    // hedef tutunca tur biter; kalan süre kadar 💎 bonus verilir.
+    // Yıldız görevi hâlâ yapılabiliyorsa önce sorulur: göreve devam et ya da bitir.
+    if (this.canFinish()) {
+      if (state.goalHitT == null) state.goalHitT = state.time;
+      const ts = taskState(LEVELS[state.round].task, state.task);
+      if (ts.ok || ts.failed || state.keepGoing === false) { this.finishEarly(); return; }
+      if (state.keepGoing == null && !this.mg) { this.askContinue(ts); return; }
+    }
     if (state.time <= 0) { state.time = 0; this.endRound(); }
   }
 

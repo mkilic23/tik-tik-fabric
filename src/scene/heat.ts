@@ -1,8 +1,8 @@
-import { LEVELS } from '../data/levels';
+import { GOLD, LEVELS } from '../data/levels';
 import Phaser from 'phaser';
 import { beep, buzz } from '../audio';
 import { BOSS, RULES } from '../data/rules';
-import { META, state } from '../state';
+import { META, saveMeta, state } from '../state';
 import { D, FONT } from '../theme';
 
 // Build sahnesinin bir parçası: yöntemler sahneye eklenir (bkz. scene/Build.ts)
@@ -14,6 +14,45 @@ export class HeatPart {
   // =====================================================================
   chapter(r = state.round) { return Math.min(RULES.chapters.length - 1, Math.floor(r / RULES.roundsPer)); }
   boomDelay() { return RULES.chapters[this.chapter()].boom + 2 * META.lv.shield; }
+  // ✨ Altın saat: aralıklarla rastgele bir üretim makinesi parlar, kısa süre çok üretir
+  tickGold(dt) {
+    const L = LEVELS[state.round];
+    if (!L.gold || state.phase !== 'run') return;
+    if (state.goldLeft > 0) {
+      state.goldLeft -= dt;
+      if (state.goldLeft <= 0) { state.goldI = -1; state.goldLeft = 0; }
+      return;
+    }
+    state.goldT = (state.goldT ?? L.gold * 0.5) - dt;
+    if (state.goldT > 0) return;
+    const list = [];
+    state.grid.forEach((t, i) => { if (t && t !== 'fan' && (state.heat[i] || 0) < 1) list.push(i); });
+    if (!list.length) { state.goldT = 3; return; }
+    const i = Phaser.Utils.Array.GetRandom(list) as number;
+    state.goldI = i; state.goldLeft = GOLD.dur; state.goldT = L.gold;
+    const c = this.cellCenter(i);
+    const t = this.add.text(c.x, c.y - this.cell * 0.55, `✨ ALTIN SAAT x${GOLD.mult}`, { fontFamily: FONT, fontSize: Math.round(this.cell * 0.2) + 'px', fontStyle: '700', color: '#ffe066', stroke: '#5a3a00', strokeThickness: 5 * D }).setOrigin(0.5).setDepth(92).setScale(0.3);
+    this.tweens.add({ targets: t, scale: 1, duration: 220, ease: 'Back.out' });
+    this.tweens.add({ targets: t, y: t.y - this.cell * 0.4, alpha: 0, delay: 1100, duration: 600, onComplete: () => t.destroy() });
+    [784, 988, 1175, 1568].forEach((f, k) => setTimeout(() => beep(f, 0.1, 'triangle', 0.13), k * 70)); buzz([15, 30, 15]);
+    if (!META.goldSeen) {
+      META.goldSeen = true; saveMeta();
+      this.flashTip('✨ Altın saat!', `Parlayan makine ${GOLD.dur} saniye boyunca ${GOLD.mult} kat üretir. Isınırsa fırsat kaçar, ona göz kulak ol!`, 0xffd84a, 5000);
+    }
+  }
+  drawGold() {
+    const g = this.goldG, r = this.goldR; if (!g) return;
+    g.clear(); r.clear();
+    const i = state.goldI;
+    if (state.phase !== 'run' || !(state.goldLeft > 0) || i < 0 || !this.cells[i]) return;
+    const c = this.cellCenter(i), s = this.cell, pulse = 0.5 + 0.5 * Math.sin(this.time.now / 120);
+    g.fillStyle(0xffd84a, 0.18 + 0.12 * pulse).fillCircle(c.x, c.y, s * (0.62 + 0.06 * pulse));
+    g.fillStyle(0xfff2a0, 0.25).fillCircle(c.x, c.y, s * 0.42);
+    const f = state.goldLeft / GOLD.dur;
+    r.lineStyle(4 * D, 0x5a3a00, 0.6).strokeCircle(c.x, c.y, s * 0.5);
+    r.lineStyle(4 * D, 0xffd84a, 1).beginPath().arc(c.x, c.y, s * 0.5, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * f).strokePath();
+  }
+
   tickJolt(dt) {
     // patron: gevşek vidalar, ara ara bir makine aniden ısınır
     const B = BOSS[state.round];

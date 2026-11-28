@@ -37,13 +37,13 @@ const PLAN = [
   ['Nefes leveli: acele yok, tamirleri tam zamanında yap.', { type: 'perfect', n: 5 }],
   ['Paslı Rıza 💎 fiyatlarını kırdı. Kasayı dolduralım!', { type: 'money', n: 8 }],
   ['Zor vardiya: makineler çabuk ısınıyor. Hiçbiri kızmasın.', { type: 'cool' }],
-  ['Uzun ama hoşgörülü bir vardiya. Az dokun, akıllı yerleştir.', { type: 'maxRep', n: 14 }],
+  ['İlk ✨ Altın saat: ara ara bir makine parlar, 10 saniye 3 kat üretir. Az dokun, akıllı yerleştir.', { type: 'maxRep', n: 14 }],
   ['Mükemmel serisi: ellerini ısıt!', { type: 'perfect', n: 8 }],
   ['Nuri Usta\'nın ilk sınavı. Fan ve Yalıtım Plakası tam bugünlük.', { type: 'pressure', n: 70 }],
   // Bölge 2: öncelik ve zamanlama
   ['Şehir 💎 ile ödüyor. Basıcıları çalıştır.', { type: 'money', n: 8 }],
   ['Az dokun: makineleri iyi yerleştiren az tamir eder.', { type: 'maxRep', n: 10 }],
-  ['Belediye müfettişi geliyor: basınç düşük kalsın.', { type: 'pressure', n: 55 }],
+  ['Belediye siparişi: basınç düşük kalsın.', { type: 'pressure', n: 55 }],
   ['Zor vardiya: büyük sipariş, makineler kızmasın.', { type: 'cool' }],
   ['Nefes leveli: kasaya biraz para koy.', { type: 'money', n: 10 }],
   ['Usta işi: tamirleri tam zamanında yap.', { type: 'perfect', n: 8 }],
@@ -54,16 +54,21 @@ const PLAN = [
   // Bölge 3: her şey bir arada
   ['Festival hazırlığı: fener başına 💎 lazım.', { type: 'money', n: 12 }],
   ['Fener ustalığı: mükemmel tamir serisi.', { type: 'perfect', n: 10 }],
-  ['Festival öncesi gece: basıncı düşük tut, gürültü yapma.', { type: 'pressure', n: 55 }],
+  ['Festival yaklaşıyor: basıncı düşük tut.', { type: 'pressure', n: 55 }],
   ['Zor vardiya: kalabalık fabrika, kimse kızmasın.', { type: 'cool' }],
-  ['Nefes leveli: festival kasası dolsun.', { type: 'money', n: 15 }],
+  ['✨ Altın saat festivali: sık sık altın saat! Festival kasası dolsun.', { type: 'money', n: 15 }],
   ['Az dokun: iyi kurulmuş fabrika kendi kendine çalışır.', { type: 'maxRep', n: 16 }],
-  ['Rüzgârlı akşam: basınç %50\'yi geçmesin.', { type: 'pressure', n: 50 }],
+  ['Sakin vardiya: basınç %50\'yi geçmesin.', { type: 'pressure', n: 50 }],
   ['Uzun vardiya: ustalığını göster.', { type: 'perfect', n: 14 }],
   ['Finalden önce son prova: kimse kızmasın.', { type: 'cool' }],
   ['Fenerler Gecesi! Festivalin bütün fenerleri bizden.', { type: 'pressure', n: 75 }],
 ];
 LEVELS.forEach((L, i) => { L.idea = PLAN[i][0]; L.task = PLAN[i][1]; });
+
+// ✨ Altın saat: her 'every' saniyede bir rastgele bir makine 'dur' saniye parlar, çıktısı 'mult' kat olur
+export const GOLD = { dur: 10, mult: 3 };
+const GOLD_EVERY = { 7: 35, 12: 30, 17: 35, 21: 30, 24: 15, 27: 30 };   // level (0'dan) -> aralık (sn)
+LEVELS.forEach((L, i) => { L.gold = GOLD_EVERY[i] || 0; });
 
 // görevin yazısı
 export function taskText(t) {

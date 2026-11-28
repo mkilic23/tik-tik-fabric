@@ -1,11 +1,11 @@
-import { LEVELS, taskState, taskText } from '../data/levels';
+import { GOLD, LEVELS, taskState, taskText } from '../data/levels';
 import Phaser from 'phaser';
 import { Music, beep, boomSound, buzz, sfx } from '../audio';
 import { INFO, MACHINES } from '../data/machines';
 import { BOSS, DIRS, PROD, RES, RULES } from '../data/rules';
 import { STORY } from '../data/story';
 import { BTN_BRASS, BTN_GO, makeButton } from '../draw';
-import { META, clearRun, levelTime, loadRun, newArea, newRun, saveMeta, saveRun, starsFor, state } from '../state';
+import { META, bitCount, clearRun, endReplay, levelTime, loadRun, newArea, newRun, saveMeta, saveRun, starBits, starsFor, state } from '../state';
 import { C, COLS, D, FONT, ROWS } from '../theme';
 
 // Build sahnesinin bir parçası: yöntemler sahneye eklenir (bkz. scene/Build.ts)
@@ -86,7 +86,9 @@ export class FlowPart {
     state.res.spark = 0;
     state.res.energy = 0;
     state.buf.fill(0);
-    state.task = { perfect: 0, repairs: 0, earned: 0, hot: false, maxP: 0 };   // 3. yıldız görevi sayaçları
+    state.task = { perfect: 0, repairs: 0, earned: 0, hot: false, maxP: 0 };
+    state.goalHitT = null; state.keepGoing = null;   // hedef tutunca görev seçimi
+    state.goldI = -1; state.goldLeft = 0; state.goldT = LEVELS[state.round].gold ? LEVELS[state.round].gold * 0.5 : null;   // 3. yıldız görevi sayaçları
     state.boomT = this.boomDelay();
     // her makine biraz farklı ısınır, böylece uyarılar aynı anda gelmez
     this.cells.forEach((v, i) => {
@@ -127,14 +129,20 @@ export class FlowPart {
     if (won) {
       // level geçildi: yıldız, hurda ve kumbara
       const R = state.result, n = state.round;
-      R.starTime = state.time / levelTime() >= RULES.timeStar;
+      // süre yıldızı hedefin tutulduğu ana göre (göreve devam etmek onu kaybettirmez)
+      R.starTime = (state.goalHitT ?? state.time) / levelTime() >= RULES.timeStar;
       R.starTask = taskState(LEVELS[n].task, state.task).ok;
-      R.stars = starsFor(state.time, levelTime(), R.starTask);
-      const first = !(META.stars[n] > 0);
-      META.stars[n] = Math.max(META.stars[n] || 0, R.stars);
-      R.scrap = 2 + R.stars + (BOSS[n] ? 5 : 0) + ((n + 1) % 5 === 0 && first ? 5 : 0);   // her 5 levelde bir +5 ödül (ilk geçişte)
+      R.stars = starsFor(R.starTime ? levelTime() : 0, levelTime(), R.starTask);
+      // yıldızlar ayrı ayrı saklanır, denemeler arasında birleşir
+      const old = starBits(n), first = old === 0;
+      const bits = old | 1 | (R.starTime ? 2 : 0) | (R.starTask ? 4 : 0);
+      R.newStars = bitCount(bits) - bitCount(old);
+      R.bits = bits;
+      META.bits[n] = bits; META.stars[n] = bitCount(bits);
+      // hurda: ilk geçişte 2 (+5 patron, +5 her 5. level), her yeni yıldız +1
+      R.scrap = (first ? 2 + (BOSS[n] ? 5 : 0) + ((n + 1) % 5 === 0 ? 5 : 0) : 0) + R.newStars;
       META.scrap += R.scrap;
-      R.piggy = META.lv.money; state.res.money += R.piggy;
+      R.piggy = state.replay != null ? 0 : META.lv.money; state.res.money += R.piggy;
       saveMeta();
     }
     this.refreshPhase();
@@ -217,6 +225,7 @@ export class FlowPart {
       sub = R.boom && R.round === 0 ? 'Bir türün bütün makineleri kızınca basınç %100 olur.\nIsınanları mini oyunla soğut, Fan 2×2 alanı korur.'
         : `Level ${n} tekrar oynanacak.\nFabrika bu levele girerkenki haline döner.`;
       label = '↻  Tekrar dene'; style = BTN_GO; action = 'retry';
+      if (state.replay != null) sub = `Yıldız denemesi. Fabrika bu levelin\nbaşındaki haline döner.`;
     } else {
       title = R.last ? 'Bütün leveller bitti!' : `Level ${n} geçildi!`;
       big = '★'.repeat(R.stars) + '☆'.repeat(3 - R.stars);
@@ -227,6 +236,12 @@ export class FlowPart {
       const chk = ok => ok ? '✓' : '✗';
       sub = `★ Hedef ✓   ★ Süre ${chk(R.starTime)}   ★ Görev ${chk(R.starTask)}\n` + extra.join('   ') + '\n' + (R.last ? 'Festival fenerleri senin sayende yanıyor!' : ((R.round + 1) % RULES.roundsPer === 0 ? 'Sonraki: yeni bölge! Fabrikayı sıfırdan kuracaksın.' : BOSS[R.round + 1] ? `Sonraki: ☠ Patron leveli (✦ ${RULES.goals[R.round + 1]})` : `Sonraki: Level ${n + 1} (✦ ${RULES.goals[R.round + 1]})  ·  +${RULES.placesPerRound} hak`));
       label = R.last ? 'Haritaya dön' : 'Dükkana git  ▶'; style = BTN_GO; action = R.last ? 'map' : 'next';
+      if (R.bits !== 7) sub = sub.replace('\n', `\nToplam: ${'★'.repeat(bitCount(R.bits))}${'☆'.repeat(3 - bitCount(R.bits))}${R.newStars ? `  (+${R.newStars} yeni)` : ''}\n`);
+      if (state.replay != null) {
+        title = `Level ${n} tekrar geçildi!`;
+        sub = `★ Hedef ✓   ★ Süre ${chk(R.starTime)}   ★ Görev ${chk(R.starTask)}\nToplam: ${'★'.repeat(bitCount(R.bits))}${'☆'.repeat(3 - bitCount(R.bits))}   ${R.scrap ? `+${R.scrap} 🔩 hurda` : 'Yeni yıldız yok'}`;
+        label = '⌂  Haritaya dön'; action = 'replayEnd';
+      }
     }
     const t1 = this.add.text(cx, cy - ch * 0.36, title, { fontFamily: FONT, fontSize: Math.round(cw * (R.boom ? 0.088 : 0.09)) + 'px', fontStyle: '700', color: good ? '#7fe3a5' : R.boom ? '#ffb36b' : '#ff8a7c' }).setOrigin(0.5);
     const t2 = this.add.text(cx, cy - ch * 0.2, big, { fontFamily: FONT, fontSize: Math.round(cw * (good ? 0.12 : 0.08)) + 'px', fontStyle: '700', color: '#ffd84a' }).setOrigin(0.5);
@@ -234,7 +249,14 @@ export class FlowPart {
     const bh = Math.min(ch * 0.16, 52 * D);
     const btn = makeButton(this, cx, cy + ch * 0.2, cw * 0.72, bh, label, style, () => this.afterResult(action));
     k.add([dim, g, t1, t2, t3, btn]);
-    if (action !== 'map') k.add(makeButton(this, cx, cy + ch * 0.2 + bh * 1.2, cw * 0.5, bh * 0.8, '⌂  Harita', BTN_BRASS, () => this.afterResult('map')));
+    // ikinci sıra: yıldız için tekrar ve harita
+    const y2 = cy + ch * 0.2 + bh * 1.2, sw = cw * 0.4;
+    const canAgain = good && R.bits !== 7;
+    const mapAct = state.replay != null ? 'replayEnd' : 'map';
+    if (canAgain) {
+      k.add(makeButton(this, cx - sw / 2 - 5 * D, y2, sw, bh * 0.8, '↻ Yıldız için', { base: 0x8fb4ff, dark: 0x3e62b0, text: '#0d1a33' }, () => this.afterResult('again')));
+      if (action !== 'map' && action !== 'replayEnd') k.add(makeButton(this, cx + sw / 2 + 5 * D, y2, sw, bh * 0.8, '⌂  Harita', BTN_BRASS, () => this.afterResult('map')));
+    } else if (action !== 'map' && action !== 'replayEnd') k.add(makeButton(this, cx, y2, cw * 0.5, bh * 0.8, '⌂  Harita', BTN_BRASS, () => this.afterResult(mapAct)));
     k.setAlpha(0); this.tweens.add({ targets: k, alpha: 1, duration: 200 });
     this.resultBox = k;
   }
@@ -245,6 +267,10 @@ export class FlowPart {
     if (this.resultBox) { this.resultBox.destroy(); this.resultBox = null; }
     this.boomed = false;
     const passed = R && R.won && !R.boom;
+    // tekrar oynama bitti: ana fabrikaya dön
+    if (action === 'replayEnd') { endReplay(); this.scene.start('menu', { tab: 'map' }); return; }
+    // yıldız için aynı leveli tekrar oyna (level başı kaydından)
+    if (action === 'again') { if (!loadRun()) newRun(); state.retry = true; this.scene.restart(); return; }
     if (!passed) {
       // kaybedince: fabrika levelin başındaki haline döner
       if (!loadRun()) { newRun(); }
@@ -300,12 +326,13 @@ export class FlowPart {
   produce(i, v) {
     const p = PROD[v.type];
     if (!p.out) return false;
+    const mult = state.phase === 'run' && state.goldI === i && state.goldLeft > 0 ? GOLD.mult : 1;   // ✨ altın saat
     const s = this.cell, c = this.cellCenter(i);
     let px = c.x, py = c.y - s * 0.3, dx = 0, dy = -1;
     if (v.type === 'crank') {
       // Krank enerjiyi kendinde biriktirir, oklarındaki makineler alır
       if (state.buf[i] >= RULES.bufMax) { v.stalled = 'full'; return false; }
-      state.buf[i]++;
+      state.buf[i] = Math.min(RULES.bufMax, state.buf[i] + mult);
     } else {
       if (this.outputBlocked(i)) { v.stalled = 'blocked'; return false; }
       const sup = this.suppliers(i).filter(j => state.buf[j] > 0);
@@ -313,13 +340,13 @@ export class FlowPart {
       sup.sort((a, b) => state.buf[b] - state.buf[a]);
       state.buf[sup[0]]--;
       this.flowEnergy(sup[0], i);
-      state.res[p.out] += 1;
-      if (p.out === 'money' && state.task) state.task.earned++;
+      state.res[p.out] += mult;
+      if (p.out === 'money' && state.task) state.task.earned += mult;
       [dx, dy] = DIRS[this.rotOf(i)];
       px = c.x + dx * s * 0.42; py = c.y + dy * s * 0.42;
     }
     v.stalled = false;
-    const pop = this.add.text(px, py, `+1 ${RES[p.out].sym}`, {
+    const pop = this.add.text(px, py, `+${mult} ${RES[p.out].sym}`, {
       fontFamily: FONT, fontSize: Math.round(s * 0.2) + 'px', fontStyle: '700', color: RES[p.out].color,
       stroke: '#0b0f1c', strokeThickness: 4 * D,
     }).setOrigin(0.5).setDepth(60);

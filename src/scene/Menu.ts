@@ -4,7 +4,7 @@ import { AREAS, LEVELS, PER_AREA, taskText } from '../data/levels';
 import { BOOST, ENG, UPG } from '../data/progress';
 import { BOSS, RULES } from '../data/rules';
 import { BTN_BRASS, BTN_GO, drawMachine, makeButton } from '../draw';
-import { META, clearRun, newArea, saveMeta, saveRun, state } from '../state';
+import { META, bitCount, clearRun, endReplay, newArea, saveMeta, saveRun, starBits, startReplay, state } from '../state';
 import { C, D, FONT, THEMES, T } from '../theme';
 import { DialogPart } from './dialog';
 
@@ -33,6 +33,7 @@ export class Menu extends Phaser.Scene {
     this.barH = Math.min(86 * D, H * 0.11);
     this.page = null; this.popup = null; this.drag = null;
     state.menuTab = this.tab;
+    if (state.replay != null) endReplay();   // tekrar oynamadan dönüldü: ana fabrika
     this.drawPage();
     this.drawBar();
     this.scale.once('resize', () => this.scene.restart({ tab: this.tab }));
@@ -135,16 +136,17 @@ export class Menu extends Phaser.Scene {
   totalStars() { return META.stars.reduce((a, b) => a + (b || 0), 0); }
 
   // level penceresi: bilgi, ödül ve güçlendirici seçimi; Oyna ile geçiş efekti
-  play() {
+  play(n = this.curLevel()) {
     sfx.tap();
-    if (this.allDone()) { this.startLevel(); return; }
+    if (n === this.curLevel() && this.allDone()) { this.startLevel(); return; }
     this.pick = this.pick || {};
+    this.sel = n;
     this.openLevel();
   }
 
   openLevel() {
     if (this.popup) this.popup.destroy();
-    const W = this.W, H = this.H, n = this.curLevel(), L = LEVELS[n], A = AREAS[L.area], boss = BOSS[n];
+    const W = this.W, H = this.H, n = this.sel != null ? this.sel : this.curLevel(), L = LEVELS[n], A = AREAS[L.area], boss = BOSS[n];
     const k = this.add.container(0, 0).setDepth(300);
     const dim = this.add.rectangle(0, 0, W, H, 0x05070d, 0.72).setOrigin(0).setInteractive();
     const cw = Math.min(W - this.pad * 2.5, 340 * D), ch = Math.min(cw * 1.75, H * 0.8);
@@ -165,7 +167,7 @@ export class Menu extends Phaser.Scene {
     xg.fillStyle(0x8a2a22, 1).fillCircle(0, 2 * D, 16 * D); xg.fillStyle(0xe0564a, 1).fillCircle(0, 0, 16 * D);
     xg.lineStyle(2.5 * D, 0xffffff, 1).strokeCircle(0, 0, 16 * D);
     xg.lineStyle(4 * D, 0xffffff, 1).lineBetween(-6 * D, -6 * D, 6 * D, 6 * D).lineBetween(6 * D, -6 * D, -6 * D, 6 * D);
-    xb.add(xg); xb.on('pointerup', () => { sfx.tap(); k.destroy(); this.popup = null; this.scene.restart({ tab: this.tab }); });
+    xb.add(xg); xb.on('pointerup', () => { sfx.tap(); k.destroy(); this.popup = null; this.sel = null; this.scene.restart({ tab: this.tab }); });
     k.add([dim, g, title, xb]);
     let y = y0 + rh * 0.9;
     const fs = Math.round(Math.min(cw * 0.05, 17 * D)), fsS = Math.round(fs * 0.84);
@@ -180,10 +182,10 @@ export class Menu extends Phaser.Scene {
     k.add([t1, idea]);
     y += ih + 10 * D;
     // yıldızlar: ★1 hedef, ★2 süre, ★3 görev
-    const best = META.stars[n] || 0;
+    const bits = starBits(n), again = n !== this.curLevel();
     const rows = ['Hedefi tuttur', `Sürenin %${Math.round(RULES.timeStar * 100)}'si kala bitir`, taskText(L.task)];
     rows.forEach((r, i) => {
-      const st = this.add.text(ix + 10 * D, y, '★', { fontFamily: FONT, fontSize: Math.round(fs * 1.05) + 'px', fontStyle: '700', color: i < best ? '#ffd84a' : '#ffe3a8' });
+      const st = this.add.text(ix + 10 * D, y, '★', { fontFamily: FONT, fontSize: Math.round(fs * 1.05) + 'px', fontStyle: '700', color: bits & (1 << i) ? '#ffd84a' : '#6a5a90' });
       const tt = this.add.text(ix + 10 * D + fs * 1.5, y + 1 * D, r, { fontFamily: FONT, fontSize: fsS + 'px', fontStyle: i === 2 ? '700' : '500', color: i === 2 ? '#ffe3a8' : '#c9bde8', wordWrap: { width: iw - fs * 2 } });
       k.add([st, tt]);
       y += Math.max(st.height, tt.height) + 2 * D;
@@ -214,9 +216,9 @@ export class Menu extends Phaser.Scene {
     });
     y += tw + 14 * D;
     const sel = keys.filter(kk => this.pick[kk]);
-    const hint = sel.length === 1 ? BOOST[sel[0]].desc : sel.length ? `${sel.length} güçlendirici seçildi.` : `Bitince ${BOOST.time.cost} 🔩 ile alabilirsin.`;
+    const hint = again && !sel.length ? (bitCount(bits) === 3 ? 'Bu leveli 3 yıldızla geçtin. İstersen yine oyna.' : 'Eksik yıldızları al: aldıkların saklı kalır, ana fabrikan değişmez.') : sel.length === 1 ? BOOST[sel[0]].desc : sel.length ? `${sel.length} güçlendirici seçildi.` : `Bitince ${BOOST.time.cost} 🔩 ile alabilirsin.`;
     k.add(this.add.text(cx, y, hint, { fontFamily: FONT, fontSize: Math.round(fsS * 0.92) + 'px', fontStyle: '500', color: '#c9bde8', align: 'center', wordWrap: { width: cw - 40 * D } }).setOrigin(0.5, 0));
-    const pb = makeButton(this, cx, y0 + ch - Math.min(48 * D, ch * 0.1) - 10 * D, cw * 0.62, Math.min(58 * D, ch * 0.12), 'Oyna', BTN_GO, () => this.startLevel());
+    const pb = makeButton(this, cx, y0 + ch - Math.min(48 * D, ch * 0.1) - 10 * D, cw * 0.62, Math.min(58 * D, ch * 0.12), again ? 'Tekrar oyna' : 'Oyna', BTN_GO, () => this.startLevel());
     pb.label.setStroke('#1e5c37', 5 * D);
     k.add(pb);
     k.setScale(0.85).setAlpha(0);
@@ -241,9 +243,11 @@ export class Menu extends Phaser.Scene {
     Object.keys(pick).forEach(kk => { META.boost[kk] = Math.max(0, (META.boost[kk] || 0) - 1); });
     saveMeta();
     state.boostPick = Object.assign({}, pick); this.pick = {};
+    const n = this.sel != null ? this.sel : this.curLevel(); this.sel = null;
+    if (n !== this.curLevel()) startReplay(n);
     state.enterFx = true; state.menuTab = 'home';
     sfx.pick(); buzz(20);
-    const W = this.W, H = this.H, A = AREAS[LEVELS[this.curLevel()].area];
+    const W = this.W, H = this.H, A = AREAS[LEVELS[n].area];
     const cx = W / 2, cy = H / 2, Rmax = Math.hypot(W, H) / 2 + 20 * D;
     // dışarıdan içe kapanan daire: kalın çember çizgisiyle
     const iris = this.add.graphics().setDepth(400);
@@ -513,9 +517,9 @@ export class Menu extends Phaser.Scene {
           k.add(this.add.text(rx, it.y - 3 * D, '🔩', { fontFamily: FONT, fontSize: Math.round(16 * D) + 'px' }).setOrigin(0.5));
           k.add(this.add.text(rx, it.y + 26 * D, got ? 'alındı' : '+5', { fontFamily: FONT, fontSize: Math.round(11 * D) + 'px', fontStyle: '700', color: '#ffe3a8' }).setOrigin(0.5));
         }
-        if (isCur) {
+        if (isCur || done) {
           const hit = this.add.rectangle(px + pw / 2, it.y, pw + 30 * D, ph + 20 * D, 0, 0).setInteractive();
-          hit.on('pointerup', () => { if (!this.drag || !this.drag.moved) this.play(); });
+          hit.on('pointerup', () => { if (!this.drag || !this.drag.moved) this.play(n); });
           k.add(hit);
         }
       }

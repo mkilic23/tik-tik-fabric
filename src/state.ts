@@ -8,7 +8,7 @@ export const state: any = { theme: savedTheme };
 // ---------- kalıcı ilerleme (hurda, yıldızlar, açılımlar, mühendisler) ve kayıt ----------
 // stars[n]: n. levelde alınan en iyi yıldız (0 = geçilmedi). Fabrika levelden levele taşınır;
 // kaydedilen 'run' o levelin başındaki fabrikadır, kaybedince oradan tekrar oynanır.
-export const META: any = { scrap: 0, lv: { money: 0, place: 0, shield: 0, offer: 0 }, eng: { cirak: true }, pick: 'cirak', runs: 0, stars: [], boost: { time: 2, cool: 2, cash: 2 }, tutorialDone: false, seenIntro: false };
+export const META: any = { scrap: 0, lv: { money: 0, place: 0, shield: 0, offer: 0 }, eng: { cirak: true }, pick: 'cirak', runs: 0, stars: [], bits: [], boost: { time: 2, cool: 2, cash: 2 }, tutorialDone: false, seenIntro: false };
 try {
   const m = JSON.parse(localStorage.getItem('tiktik-meta') || 'null');
   if (m) {
@@ -16,6 +16,7 @@ try {
     META.lv = Object.assign({ money: 0, place: 0, shield: 0, offer: 0 }, m.lv);
     META.eng = Object.assign({ cirak: true }, m.eng);
     if (!Array.isArray(META.stars)) META.stars = [];
+    if (!Array.isArray(META.bits)) META.bits = [];
     META.boost = Object.assign({ time: 2, cool: 2, cash: 2 }, m.boost);
   }
 } catch (e) {}
@@ -23,15 +24,22 @@ export function saveMeta() { try { localStorage.setItem('tiktik-meta', JSON.stri
 
 // fabrika kaydı: sadece kurulum aşamasında (level başında) yazılır
 export const RUN_KEYS = ['grid', 'rot', 'heat', 'mod', 'round', 'res', 'places', 'offers', 'shopOpen', 'rerolls', 'serviceTaught', 'ventTaught', 'timeBonus'];
+// tekrar oynanan (geçilmiş) level: state.replay = level no; ana kayıt dokunulmadan durur
+function runKey() { return state.replay != null ? 'tiktik-snap-' + state.replay : 'tiktik-run'; }
 export function saveRun() {
-  if (state.phase !== 'build') return;
-  try { const o = {}; RUN_KEYS.forEach(k => { o[k] = state[k]; }); localStorage.setItem('tiktik-run', JSON.stringify(o)); } catch (e) {}
+  if (state.phase !== 'build' || state.replay != null) return;
+  try {
+    const o = {}; RUN_KEYS.forEach(k => { o[k] = state[k]; });
+    const j = JSON.stringify(o);
+    localStorage.setItem('tiktik-run', j);
+    localStorage.setItem('tiktik-snap-' + state.round, j);   // her levelin başlangıç fabrikası (yıldız için tekrar oynamada)
+  } catch (e) {}
 }
 export function clearRun() { try { localStorage.removeItem('tiktik-run'); } catch (e) {} }
 // level başındaki fabrikayı geri yükle (açılışta ve kaybedince)
 export function loadRun() {
   try {
-    const o = JSON.parse(localStorage.getItem('tiktik-run') || 'null');
+    const o = JSON.parse(localStorage.getItem(runKey()) || 'null');
     if (!o || !Array.isArray(o.grid) || o.grid.length !== COLS * ROWS || !(o.round < RULES.goals.length)) return false;
     RUN_KEYS.forEach(k => { if (o[k] !== undefined) state[k] = JSON.parse(JSON.stringify(o[k])); });
     state.phase = 'build'; state.needIntro = false; state.res.spark = 0; state.res.energy = 0;
@@ -40,6 +48,32 @@ export function loadRun() {
     return true;
   } catch (e) { return false; }
 }
+// geçilmiş bir leveli yıldız için tekrar oyna: o levelin başlangıç fabrikası yüklenir
+// (kayıt yoksa bölge başından o levele göre boş bir fabrika kurulur)
+export function startReplay(n) {
+  state.replay = n;
+  if (loadRun()) return;
+  const L = LEVELS[n];
+  newArea(L.area);
+  state.round = n; state.needIntro = false;
+  state.places += RULES.placesPerRound * L.idx;
+  state.res.money += 3 * L.idx;
+  state.time = L.time; state.boomT = L.boom;
+  try { const o = {}; RUN_KEYS.forEach(k => { o[k] = state[k]; }); localStorage.setItem('tiktik-snap-' + n, JSON.stringify(o)); } catch (e) {}
+}
+// tekrar oynama bitti: ana fabrikaya dön
+export function endReplay() {
+  if (state.replay == null) return;
+  state.replay = null;
+  if (!loadRun()) newRun();
+}
+// yıldız bitleri: 1 hedef, 2 süre, 4 görev. Denemeler arasında birleşir.
+export function starBits(n) {
+  if (META.bits[n] != null) return META.bits[n];
+  const s = META.stars[n] || 0;        // eski kayıtlar: sayıdan tahmin
+  return s >= 3 ? 7 : s === 2 ? 3 : s === 1 ? 1 : 0;
+}
+export function bitCount(b) { return (b & 1) + ((b >> 1) & 1) + ((b >> 2) & 1); }
 // Usta Tamirci: mükemmel alanı çarpanı
 export function PW() { return state.eng === 'tamirci' ? 1.6 : 1; }
 // yıldız: hedef tutunca kalan süreye göre

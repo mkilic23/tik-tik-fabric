@@ -16,6 +16,7 @@ export const STORY = {
     1: ['İlk kıvılcımlar fenerciye ulaştı, adam çok memnun!', 'Bu sefer biraz daha fazla istiyor. Bir Pres daha koymayı düşün evlat.'],
     3: ['Mahallede adımız duyulmaya başladı.', 'Ama karşı sokaktaki Paslı Rıza da fener işine göz dikmiş. Ondan geri kalmayalım!'],
     6: ['Paslı Rıza dükkânın önünden geçerken sırıttı. "Bu sıcakta o hurdalar patlar!" dedi.'],
+    7: ['Bugün bir müjdem var evlat: ara ara bir makine altın gibi parlayacak.', 'Parlarken 10 saniye boyunca 3 kat üretir. Ona yetiş ama ısıtma!'],
     11: ['Belediyeden mektup geldi: şehrin bütün sokak fenerleri bize emanet!', 'Paslı Rıza hırsından çatlıyor. Halkalarla üretimi hızlandıralım.'],
     14: ['Dün gece biri atölyenin önünde dolaşıyordu... Paslı Rıza mı acaba?', 'Neyse, biz işimize bakalım. Makineleri sık sık kontrol et.'],
     17: ['Sabah geldim, vidaların yarısı gevşemiş! Bu kesin Paslı Rıza\'nın işi.'],
