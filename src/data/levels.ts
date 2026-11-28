@@ -32,33 +32,33 @@ const PLAN = [
   // Bölge 1: öğrenme
   ['Krank enerjiyi, Pres kıvılcımı yapar. Bağla, başlat, ilk tamirlerini yap.', { type: 'perfect', n: 2 }],
   ['Basıcı tanıtımı: kıvılcımın yanında biraz da 💎 üret.', { type: 'money', n: 4 }],
-  ['Fan, 2x2 alanındaki makineleri yavaş ısıtır. Bu levelde kimse kızmasın.', { type: 'cool' }],
+  ['💨 Buhar sızıntısı! Yanındaki makineler hızlı ısınır. Fan\'ın 2x2 alanı sızıntıyı kapatır. Kimse kızmasın.', { type: 'cool' }],
   ['İlk uzun vardiya: 90 saniye. Basıncı aşağıda tut.', { type: 'pressure', n: 60 }],
   ['Nefes leveli: acele yok, tamirleri tam zamanında yap.', { type: 'perfect', n: 5 }],
   ['Paslı Rıza 💎 fiyatlarını kırdı. Kasayı dolduralım!', { type: 'money', n: 8 }],
-  ['Zor vardiya: makineler çabuk ısınıyor. Hiçbiri kızmasın.', { type: 'cool' }],
-  ['İlk ✨ Altın saat: ara ara bir makine parlar, 10 saniye 3 kat üretir. Az dokun, akıllı yerleştir.', { type: 'maxRep', n: 14 }],
+  ['Zor vardiya: makineler çabuk ısınıyor, borudan yine buhar sızıyor. Hiçbiri kızmasın.', { type: 'cool' }],
+  ['İlk ✨ Altın saat: ara ara bir makine parlar, 10 saniye 3 kat üretir. Parlayan Basıcı bol 💎 getirir!', { type: 'money', n: 8 }],
   ['Mükemmel serisi: ellerini ısıt!', { type: 'perfect', n: 8 }],
   ['Nuri Usta\'nın ilk sınavı. Fan ve Yalıtım Plakası tam bugünlük.', { type: 'pressure', n: 70 }],
   // Bölge 2: öncelik ve zamanlama
   ['Şehir 💎 ile ödüyor. Basıcıları çalıştır.', { type: 'money', n: 8 }],
   ['Az dokun: makineleri iyi yerleştiren az tamir eder.', { type: 'maxRep', n: 10 }],
   ['Belediye siparişi: basınç düşük kalsın.', { type: 'pressure', n: 55 }],
-  ['Zor vardiya: büyük sipariş, makineler kızmasın.', { type: 'cool' }],
+  ['Zor vardiya: büyük sipariş ve bir buhar sızıntısı. Makineler kızmasın.', { type: 'cool' }],
   ['Nefes leveli: kasaya biraz para koy.', { type: 'money', n: 10 }],
   ['Usta işi: tamirleri tam zamanında yap.', { type: 'perfect', n: 8 }],
   ['Paslı Rıza ile aynı siparişe girdik. Basınç düşük, kafa soğuk!', { type: 'pressure', n: 50 }],
-  ['Uzun vardiya: Fan\'ları akıllı kullan, kimse kızmasın.', { type: 'cool' }],
+  ['Uzun vardiya: iki buhar sızıntısı var. Fan\'ları akıllı kullan, kimse kızmasın.', { type: 'cool' }],
   ['Az dokun: en fazla 15 tamirle hedefi tuttur.', { type: 'maxRep', n: 15 }],
   ['Paslı Rıza vidaları gevşetmiş! Ani ısınmalara mükemmel tamirle cevap ver.', { type: 'perfect', n: 10 }],
   // Bölge 3: her şey bir arada
   ['Festival hazırlığı: fener başına 💎 lazım.', { type: 'money', n: 12 }],
   ['Fener ustalığı: mükemmel tamir serisi.', { type: 'perfect', n: 10 }],
   ['Festival yaklaşıyor: basıncı düşük tut.', { type: 'pressure', n: 55 }],
-  ['Zor vardiya: kalabalık fabrika, kimse kızmasın.', { type: 'cool' }],
+  ['Zor vardiya: kalabalık fabrika ve iki sızıntı. Kimse kızmasın.', { type: 'cool' }],
   ['✨ Altın saat festivali: sık sık altın saat! Festival kasası dolsun.', { type: 'money', n: 15 }],
   ['Az dokun: iyi kurulmuş fabrika kendi kendine çalışır.', { type: 'maxRep', n: 16 }],
-  ['Sakin vardiya: basınç %50\'yi geçmesin.', { type: 'pressure', n: 50 }],
+  ['İki sızıntılı vardiya: Fan\'larla kapat, basınç %50\'yi geçmesin.', { type: 'pressure', n: 50 }],
   ['Uzun vardiya: ustalığını göster.', { type: 'perfect', n: 14 }],
   ['Finalden önce son prova: kimse kızmasın.', { type: 'cool' }],
   ['Fenerler Gecesi! Festivalin bütün fenerleri bizden.', { type: 'pressure', n: 75 }],
@@ -69,6 +69,14 @@ LEVELS.forEach((L, i) => { L.idea = PLAN[i][0]; L.task = PLAN[i][1]; });
 export const GOLD = { dur: 10, mult: 3 };
 const GOLD_EVERY = { 7: 35, 12: 30, 17: 35, 21: 30, 24: 15, 27: 30 };   // level (0'dan) -> aralık (sn)
 LEVELS.forEach((L, i) => { L.gold = GOLD_EVERY[i] || 0; });
+
+// 💨 Buhar sızıntısı: levelin başında boş bir kareye konur; çevresindeki 8 karedeki makineler
+// RULES.steamHeat kat hızlı ısınır. Bir Fan'ın 2x2 alanı sızıntıyı kapsarsa buhar kesilir.
+const STEAM = { 2: 1, 6: 1, 13: 1, 17: 2, 23: 2, 26: 2 };   // level (0'dan) -> sızıntı sayısı
+LEVELS.forEach((L, i) => { L.steam = STEAM[i] || 0; });
+// sızıntı için tercih edilen kareler (ortaya yakın), sonra geri kalanlar
+export const STEAM_SPOTS = [14, 21, 15, 20, 9, 26, 13, 22, 8, 27, 16, 19];
+for (let i = 0; i < 36; i++) if (!STEAM_SPOTS.includes(i)) STEAM_SPOTS.push(i);
 
 // görevin yazısı
 export function taskText(t) {

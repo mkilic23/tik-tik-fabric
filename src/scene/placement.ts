@@ -27,6 +27,14 @@ export class PlacementPart {
     }
     return out;
   }
+  // 💨 buhar sızıntısı
+  isSteam(i) { return !!state.steam && state.steam.includes(i); }
+  free(i) { return i >= 0 && !state.grid[i] && !this.isSteam(i); }
+  steamCapped(s) { return state.grid.some((t, j) => t === 'fan' && (state.heat[j] || 0) < 1 && this.fanArea(j).includes(s)); }
+  nearSteam(i) {
+    const c = i % COLS, r = Math.floor(i / COLS);
+    return (state.steam || []).some(s => Math.abs(s % COLS - c) <= 1 && Math.abs(Math.floor(s / COLS) - r) <= 1 && !this.steamCapped(s));
+  }
   outputBlocked(i) { const n = this.nb(i, this.rotOf(i)); return n >= 0 && !!state.grid[n]; }
   fanArea(i) {
     const r = this.rotOf(i);

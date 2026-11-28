@@ -14,6 +14,7 @@ export const STORY = {
   // her levelden önce Nuri Usta'nın anlattıkları (level numarası 0'dan)
   rounds: {
     1: ['İlk kıvılcımlar fenerciye ulaştı, adam çok memnun!', 'Bu sefer biraz daha fazla istiyor. Bir Pres daha koymayı düşün evlat.'],
+    2: ['Atölyenin eski borusu çatladı, bir köşeden buhar sızıyor!', 'Yanındaki makineler çok hızlı ısınır. Bir Fan koy, alanı sızıntıyı kapsasın: buhar kesilir.'],
     3: ['Mahallede adımız duyulmaya başladı.', 'Ama karşı sokaktaki Paslı Rıza da fener işine göz dikmiş. Ondan geri kalmayalım!'],
     6: ['Paslı Rıza dükkânın önünden geçerken sırıttı. "Bu sıcakta o hurdalar patlar!" dedi.'],
     7: ['Bugün bir müjdem var evlat: ara ara bir makine altın gibi parlayacak.', 'Parlarken 10 saniye boyunca 3 kat üretir. Ona yetiş ama ısıtma!'],

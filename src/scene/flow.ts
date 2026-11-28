@@ -67,7 +67,8 @@ export class FlowPart {
 
   // ---------- tur akışı ----------
   canFinish() { return state.phase === 'run' && state.res.spark >= RULES.goals[state.round]; }
-  earlyBonus() { return Math.floor(Math.max(0, state.time) / RULES.bonusEvery); }
+  // erken bitirme bonusu hedefin tutulduğu ana göre (göreve devam etmek bonusu azaltmaz)
+  earlyBonus() { return Math.floor(Math.max(0, state.goalHitT ?? state.time) / RULES.bonusEvery); }
   finishEarly() {
     if (!this.canFinish()) return;
     const bonus = this.earlyBonus();
@@ -125,13 +126,14 @@ export class FlowPart {
     const delta = Math.round(state.pressure - before);
     state.phase = 'end';
     state.result = { won, spark: state.res.spark, goal, bonus, delta, round: state.round, last: state.round === RULES.goals.length - 1 };
-    if (state.pressure >= 100) { this.explode(); return; }
+    if (state.pressure >= 100 && !won) { this.explode(); return; }
     if (won) {
       // level geçildi: yıldız, hurda ve kumbara
       const R = state.result, n = state.round;
       // süre yıldızı hedefin tutulduğu ana göre (göreve devam etmek onu kaybettirmez)
       R.starTime = (state.goalHitT ?? state.time) / levelTime() >= RULES.timeStar;
-      R.starTask = taskState(LEVELS[n].task, state.task).ok;
+      R.starTask = taskState(LEVELS[n].task, state.task).ok && !state.task.boomed;
+      R.nearBoom = !!state.task.boomed;
       R.stars = starsFor(R.starTime ? levelTime() : 0, levelTime(), R.starTask);
       // yıldızlar ayrı ayrı saklanır, denemeler arasında birleşir
       const old = starBits(n), first = old === 0;
@@ -234,7 +236,7 @@ export class FlowPart {
       if (R.piggy) extra.push(`Kumbara: +${R.piggy} 💎`);
       extra.push(`+${R.scrap} 🔩 hurda`);
       const chk = ok => ok ? '✓' : '✗';
-      sub = `★ Hedef ✓   ★ Süre ${chk(R.starTime)}   ★ Görev ${chk(R.starTask)}\n` + extra.join('   ') + '\n' + (R.last ? 'Festival fenerleri senin sayende yanıyor!' : ((R.round + 1) % RULES.roundsPer === 0 ? 'Sonraki: yeni bölge! Fabrikayı sıfırdan kuracaksın.' : BOSS[R.round + 1] ? `Sonraki: ☠ Patron leveli (✦ ${RULES.goals[R.round + 1]})` : `Sonraki: Level ${n + 1} (✦ ${RULES.goals[R.round + 1]})  ·  +${RULES.placesPerRound} hak`));
+      sub = `★ Hedef ✓   ★ Süre ${chk(R.starTime)}   ★ Görev ${chk(R.starTask)}\n` + extra.join('   ') + '\n' + (R.nearBoom ? 'Basınç patladı: görev yıldızı kaçtı.' : R.last ? 'Festival fenerleri senin sayende yanıyor!' : ((R.round + 1) % RULES.roundsPer === 0 ? 'Sonraki: yeni bölge! Fabrikayı sıfırdan kuracaksın.' : BOSS[R.round + 1] ? `Sonraki: ☠ Patron leveli (✦ ${RULES.goals[R.round + 1]})` : `Sonraki: Level ${n + 1} (✦ ${RULES.goals[R.round + 1]})  ·  +${RULES.placesPerRound} hak`));
       label = R.last ? 'Haritaya dön' : 'Dükkana git  ▶'; style = BTN_GO; action = R.last ? 'map' : 'next';
       if (R.bits !== 7) sub = sub.replace('\n', `\nToplam: ${'★'.repeat(bitCount(R.bits))}${'☆'.repeat(3 - bitCount(R.bits))}${R.newStars ? `  (+${R.newStars} yeni)` : ''}\n`);
       if (state.replay != null) {
@@ -290,6 +292,7 @@ export class FlowPart {
     state.time = levelTime();
     state.result = null;
     state.offers = null; state.rerolls = 0; state.shopOpen = true;
+    this.setupSteam(); this.steamAt = this.time.now + 1500;
     saveRun();   // yeni levelin başlangıç kaydı
     if (action === 'map') { this.scene.start('menu', { tab: 'map' }); return; }
     this.refreshPhase();

@@ -26,7 +26,10 @@ export class HeatPart {
     state.goldT = (state.goldT ?? L.gold * 0.5) - dt;
     if (state.goldT > 0) return;
     const list = [];
-    state.grid.forEach((t, i) => { if (t && t !== 'fan' && (state.heat[i] || 0) < 1) list.push(i); });
+    // sadece şu an gerçekten üretebilen Pres/Basıcı (çıkışı açık, enerjisi gelen) parlar
+    state.grid.forEach((t, i) => {
+      if ((t === 'press' || t === 'mint') && (state.heat[i] || 0) < 1 && !this.outputBlocked(i) && this.suppliers(i).some(j => (state.heat[j] || 0) < 1)) list.push(i);
+    });
     if (!list.length) { state.goldT = 3; return; }
     const i = Phaser.Utils.Array.GetRandom(list) as number;
     state.goldI = i; state.goldLeft = GOLD.dur; state.goldT = L.gold;
@@ -78,6 +81,7 @@ export class HeatPart {
         let rate = RULES.heatRate[v.type] * (v.rateJ || 1);
         if (v.stalled) rate *= RULES.idleHeat;
         if (v.type !== 'fan' && this.cooled(i)) rate *= RULES.fanCool;
+        if (this.nearSteam(i)) rate *= RULES.steamHeat;
         if (v.boost && state.time > v.boost.until) rate *= 1.25;
         if (this.hasRingNear(i)) rate *= RULES.ringHeat;
         if (state.mod[i] === 'plate') rate *= RULES.plateHeat;
@@ -122,7 +126,12 @@ export class HeatPart {
       const n = Math.max(1, Math.ceil(state.boomT));
       if (n !== this.lastCount) { this.lastCount = n; beep(1100, 0.12, 'square', 0.15); buzz(40); }
       this.countText.setText(`⚠ ${n}`).setVisible(true).setScale(1 + (state.boomT % 1) * 0.3);
-      if (state.boomT <= 0) { this.countText.setVisible(false); this.explode(); }
+      if (state.boomT <= 0) {
+        this.countText.setVisible(false);
+        // hedef zaten tutulmuşsa (göreve devam ediliyordu) patlama yok: level kazanılır, görev yıldızı kaçar
+        if (state.goalHitT != null) { state.task.boomed = true; this.finishEarly(); }
+        else this.explode();
+      }
     } else {
       state.boomT = this.boomDelay(); this.lastCount = null;
       this.countText.setVisible(false);

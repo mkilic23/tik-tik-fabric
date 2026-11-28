@@ -23,7 +23,7 @@ try {
 export function saveMeta() { try { localStorage.setItem('tiktik-meta', JSON.stringify(META)); } catch (e) {} }
 
 // fabrika kaydı: sadece kurulum aşamasında (level başında) yazılır
-export const RUN_KEYS = ['grid', 'rot', 'heat', 'mod', 'round', 'res', 'places', 'offers', 'shopOpen', 'rerolls', 'serviceTaught', 'ventTaught', 'timeBonus'];
+export const RUN_KEYS = ['grid', 'rot', 'heat', 'mod', 'round', 'res', 'places', 'offers', 'shopOpen', 'rerolls', 'serviceTaught', 'ventTaught', 'timeBonus', 'steam', 'steamR'];
 // tekrar oynanan (geçilmiş) level: state.replay = level no; ana kayıt dokunulmadan durur
 function runKey() { return state.replay != null ? 'tiktik-snap-' + state.replay : 'tiktik-run'; }
 export function saveRun() {
@@ -101,6 +101,7 @@ export function newRun() {
   state.mod = new Array(COLS * ROWS).fill(null);   // takılı modüller
   state.offers = null; state.shopOpen = false; state.rerolls = 0;
   state.tutorialDone = META.tutorialDone;
+  state.steam = []; state.steamR = -1;           // buhar sızıntıları ve hangi level için kuruldukları
 }
 
 // yeni bölge: fabrika sıfırlanır, bölgenin başlangıç parasıyla başlanır

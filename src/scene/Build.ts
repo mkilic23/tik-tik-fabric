@@ -5,6 +5,7 @@ import { INFO, MACHINES, ORDER } from '../data/machines';
 import { BOSS, PROD, RULES } from '../data/rules';
 import { STORY } from '../data/story';
 import { BTN_BRASS, BTN_GO, drawMachine, makeButton, rivet } from '../draw';
+import { STEAM_SPOTS } from '../data/levels';
 import { META, levelTime, saveMeta, saveRun, state } from '../state';
 import { C, COLS, D, FONT, ROWS, T, THEMES } from '../theme';
 import { ShopPart } from './shop';
@@ -65,6 +66,9 @@ export class Build extends Phaser.Scene {
     this.hl = this.add.graphics().setDepth(5);
     this.linkG = this.add.graphics().setDepth(6);
     this.portL = this.add.graphics().setDepth(28);
+    // 💨 buhar sızıntıları: level başında (kurulumda) boş karelere konur
+    this.steamG = this.add.graphics().setDepth(5);
+    if (this.setupSteam()) saveRun();
     this.goldG = this.add.graphics().setDepth(9).setBlendMode('ADD');   // altın saat parıltısı (makinelerin altında)
     this.goldR = this.add.graphics().setDepth(29);                      // altın saat süre halkası
     this.cells = new Array(COLS * ROWS).fill(null);
@@ -144,6 +148,7 @@ export class Build extends Phaser.Scene {
 
   // haritadan ya da yeniden kurulumdan sonra levele gir: sonuç, giriş konuşması ya da dükkan
   enterLevel() {
+    this.steamAt = this.time.now + 2700;
     if (state.phase === 'end' || state.phase === 'boom') { this.showResult(); return; }
     const n = state.round + 1;
     if (state.needIntro && state.round === 0) {
@@ -397,6 +402,7 @@ export class Build extends Phaser.Scene {
       }
     } else if (this.hint.style.color !== T.hudDim) this.hint.setColor(T.hudDim);
     this.drawGold();
+    this.drawSteam();
     this.drawDanger(dtMs);
     this.cells.forEach((v, i) => { if (v) this.drawHeat(v, i); });
     this.drawLinks();
@@ -468,6 +474,56 @@ export class Build extends Phaser.Scene {
     [[wx + 10 * D, wy + 10 * D], [wx + ww - 10 * D, wy + 10 * D], [wx + 10 * D, wy + wh - 10 * D], [wx + ww - 10 * D, wy + wh - 10 * D]]
       .forEach(([x, y]) => rivet(g, x, y, 3.5 * D));
   }
+  // yeni levelin sızıntılarını kur (level başında bir kez); kurulduysa true
+  setupSteam() {
+    this.steamTold = false; this.steamAt = Infinity;   // levele girişten sonra anlatılır
+    if (state.phase !== 'build' || state.steamR === state.round) return false;
+    const want = LEVELS[state.round].steam || 0;
+    state.steamR = state.round; state.steam = [];
+    for (const i of STEAM_SPOTS) { if (state.steam.length >= want) break; if (!state.grid[i]) state.steam.push(i); }
+    return true;
+  }
+  steamInfo() {
+    this.flashTip('💨 Buhar sızıntısı', `Çevresindeki 8 karedeki makineler ${RULES.steamHeat} kat hızlı ısınır. Bir Fan'ın 2x2 alanı sızıntıyı kapsarsa buhar kesilir. Üstüne makine konmaz.`, 0x9fd8ff, 6000);
+  }
+  drawSteam() {
+    const g = this.steamG; if (!g) return;
+    g.clear();
+    const list = state.steam || [];
+    if (!list.length) return;
+    // ilk görüşte (ve her sızıntılı levelin başında) anlat
+    if (!this.steamTold && state.phase === 'build' && !this.dialog && !this.shop && this.time.now > this.steamAt) {
+      this.steamTold = true;
+      if (!META.steamSeen) { META.steamSeen = true; saveMeta(); this.steamInfo(); }
+      else this.flashTip('💨 Buhar sızıntısı', 'Fan ile kapat, yoksa yanındaki makineler hızlı ısınır.', 0x9fd8ff, 3000);
+    }
+    const s = this.cell, t = this.time.now / 1000, gap = Math.max(2, s * 0.04);
+    list.forEach((i, k) => {
+      const c = this.cellCenter(i), cap = this.steamCapped(i), col = i % COLS, row = Math.floor(i / COLS);
+      if (!cap) {
+        // tehlikeli alan: çevresindeki 8 kare hafifçe turuncu
+        const a = 0.07 + 0.04 * Math.sin(t * 3 + k);
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          const cc = col + dx, rr = row + dy;
+          if ((dx || dy) && cc >= 0 && cc < COLS && rr >= 0 && rr < ROWS) g.fillStyle(0xff8a3c, a).fillRoundedRect(this.gx + cc * s + gap, this.gy + rr * s + gap, s - gap * 2, s - gap * 2, s * 0.14);
+        }
+      }
+      // çatlak boru ağzı
+      const py = c.y + s * 0.12;
+      g.fillStyle(0x5a3a1e, 1).fillCircle(c.x, py + s * 0.04, s * 0.27);
+      g.fillStyle(cap ? 0x7a8a96 : 0xb07a3a, 1).fillCircle(c.x, py, s * 0.27);
+      g.fillStyle(0x1a1208, 1).fillEllipse(c.x, py, s * 0.32, s * 0.17);
+      g.lineStyle(2 * D, 0x1a1208, 1).lineBetween(c.x + s * 0.12, py - s * 0.2, c.x + s * 0.2, py - s * 0.06).lineBetween(c.x + s * 0.2, py - s * 0.06, c.x + s * 0.14, py + s * 0.02);
+      if (cap) {
+        g.lineStyle(3 * D, 0x7fd4e0, 0.9).strokeCircle(c.x, py, s * 0.35);
+      } else {
+        for (let p = 0; p < 4; p++) {
+          const ph = (t * 0.8 + p / 4 + k * 0.13) % 1;
+          g.fillStyle(0xeef2f8, 0.6 * (1 - ph)).fillCircle(c.x + Math.sin(t * 2 + p * 1.7) * s * 0.1, py - s * 0.1 - ph * s * 0.5, s * (0.07 + 0.13 * ph));
+        }
+      }
+    });
+  }
   cellCenter(i) {
     const c = i % COLS, r = Math.floor(i / COLS);
     return { x: this.gx + c * this.cell + this.cell / 2, y: this.gy + r * this.cell + this.cell / 2 };
@@ -512,6 +568,7 @@ export class Build extends Phaser.Scene {
       if (slot) { this.showInfo(slot.type); return; }
     }
     const i = this.cellAt(p.x, p.y);
+    if (i >= 0 && this.isSteam(i)) { sfx.tap(); this.steamInfo(); return; }
     if (i >= 0 && state.grid[i]) this.pending = { i, x: p.x, y: p.y };
   }
 
@@ -558,7 +615,7 @@ export class Build extends Phaser.Scene {
     const i = this.cellAt(p.x, this.ghostY(p.y));
     if (i < 0) return;
     const c = i % COLS, r = Math.floor(i / COLS), s = this.cell, gap = Math.max(2, s * 0.04);
-    const ok = !state.grid[i];
+    const ok = this.free(i);
     g.fillStyle(ok ? C.ok : C.bad, 0.18).fillRoundedRect(this.gx + c * s + gap, this.gy + r * s + gap, s - gap * 2, s - gap * 2, s * 0.14);
     g.lineStyle(3 * D, ok ? C.ok : C.bad, 1).strokeRoundedRect(this.gx + c * s + gap, this.gy + r * s + gap, s - gap * 2, s - gap * 2, s * 0.14);
   }
@@ -600,7 +657,7 @@ export class Build extends Phaser.Scene {
 
     const inTray = p.y > this.trayTop;
     const i = inTray ? -1 : this.cellAt(p.x, this.ghostY(p.y));
-    if (i >= 0 && !state.grid[i]) {
+    if (this.free(i)) {
       ghost.destroy();
       state.grid[i] = type;
       state.rot[i] = this.drag_rot; state.heat[i] = this.drag_heat; state.mod[i] = from >= 0 ? this.drag_mod : null;
