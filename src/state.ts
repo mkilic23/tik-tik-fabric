@@ -8,7 +8,7 @@ export const state: any = { theme: savedTheme };
 // ---------- kalıcı ilerleme (hurda, yıldızlar, açılımlar, mühendisler) ve kayıt ----------
 // stars[n]: n. levelde alınan en iyi yıldız (0 = geçilmedi). Fabrika levelden levele taşınır;
 // kaydedilen 'run' o levelin başındaki fabrikadır, kaybedince oradan tekrar oynanır.
-export const META: any = { scrap: 0, lv: { money: 0, place: 0, shield: 0, offer: 0 }, eng: { cirak: true }, pick: 'cirak', runs: 0, stars: [], tutorialDone: false, seenIntro: false };
+export const META: any = { scrap: 0, lv: { money: 0, place: 0, shield: 0, offer: 0 }, eng: { cirak: true }, pick: 'cirak', runs: 0, stars: [], boost: { time: 2, cool: 2, cash: 2 }, tutorialDone: false, seenIntro: false };
 try {
   const m = JSON.parse(localStorage.getItem('tiktik-meta') || 'null');
   if (m) {
@@ -16,12 +16,13 @@ try {
     META.lv = Object.assign({ money: 0, place: 0, shield: 0, offer: 0 }, m.lv);
     META.eng = Object.assign({ cirak: true }, m.eng);
     if (!Array.isArray(META.stars)) META.stars = [];
+    META.boost = Object.assign({ time: 2, cool: 2, cash: 2 }, m.boost);
   }
 } catch (e) {}
 export function saveMeta() { try { localStorage.setItem('tiktik-meta', JSON.stringify(META)); } catch (e) {} }
 
 // fabrika kaydı: sadece kurulum aşamasında (level başında) yazılır
-export const RUN_KEYS = ['grid', 'rot', 'heat', 'mod', 'round', 'res', 'places', 'offers', 'shopOpen', 'rerolls', 'serviceTaught', 'ventTaught'];
+export const RUN_KEYS = ['grid', 'rot', 'heat', 'mod', 'round', 'res', 'places', 'offers', 'shopOpen', 'rerolls', 'serviceTaught', 'ventTaught', 'timeBonus'];
 export function saveRun() {
   if (state.phase !== 'build') return;
   try { const o = {}; RUN_KEYS.forEach(k => { o[k] = state[k]; }); localStorage.setItem('tiktik-run', JSON.stringify(o)); } catch (e) {}
@@ -44,7 +45,7 @@ export function PW() { return state.eng === 'tamirci' ? 1.6 : 1; }
 // yıldız: hedef tutunca kalan süreye göre
 export function starsFor(timeLeft, total) { const f = timeLeft / total; return f >= RULES.stars[0] ? 3 : f >= RULES.stars[1] ? 2 : 1; }
 // şu anki levelin süresi
-export function levelTime(r = state.round) { return LEVELS[r].time; }
+export function levelTime(r = state.round) { return LEVELS[r].time + (r === state.round ? state.timeBonus || 0 : 0); }
 
 // yeni fabrika: 1. levelden başlar
 export function newRun() {

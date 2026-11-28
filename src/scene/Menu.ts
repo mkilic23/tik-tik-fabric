@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { beep, buzz, sfx } from '../audio';
 import { AREAS, LEVELS, PER_AREA } from '../data/levels';
-import { ENG, UPG } from '../data/progress';
+import { BOOST, ENG, UPG } from '../data/progress';
 import { BOSS } from '../data/rules';
 import { BTN_BRASS, BTN_GO, drawMachine, makeButton } from '../draw';
 import { META, clearRun, newArea, saveMeta, saveRun, state } from '../state';
@@ -134,10 +134,131 @@ export class Menu extends Phaser.Scene {
   allDone() { return LEVELS.every((_, i) => (META.stars[i] || 0) > 0) && state.round === 0 && !state.grid.some(Boolean); }
   totalStars() { return META.stars.reduce((a, b) => a + (b || 0), 0); }
 
+  // level penceresi: bilgi, ödül ve güçlendirici seçimi; Oyna ile geçiş efekti
   play() {
+    sfx.tap();
+    if (this.allDone()) { this.startLevel(); return; }
+    this.pick = this.pick || {};
+    this.openLevel();
+  }
+
+  openLevel() {
+    if (this.popup) this.popup.destroy();
+    const W = this.W, H = this.H, n = this.curLevel(), L = LEVELS[n], A = AREAS[L.area], boss = BOSS[n];
+    const k = this.add.container(0, 0).setDepth(300);
+    const dim = this.add.rectangle(0, 0, W, H, 0x05070d, 0.72).setOrigin(0).setInteractive();
+    const cw = Math.min(W - this.pad * 2.5, 340 * D), ch = Math.min(cw * 1.42, H * 0.72);
+    const cx = W / 2, cy = H * 0.47, x0 = cx - cw / 2, y0 = cy - ch / 2, R = 26 * D;
+    const g = this.add.graphics();
+    g.fillStyle(0x1a1030, 1).fillRoundedRect(x0, y0 + 8 * D, cw, ch, R);
+    g.fillStyle(0x5b3fa0, 1).fillRoundedRect(x0, y0, cw, ch, R);
+    g.fillStyle(0x4a3385, 1).fillRoundedRect(x0 + 8 * D, y0 + 8 * D, cw - 16 * D, ch - 16 * D, R * 0.8);
+    // başlık kurdelesi
+    const rh = Math.min(64 * D, ch * 0.13), rw = cw * 0.8;
+    g.fillStyle(0x2a1d47, 1).fillRoundedRect(cx - rw / 2, y0 - rh * 0.35 + 5 * D, rw, rh, rh * 0.4);
+    g.fillStyle(boss ? 0xe0564a : 0x7a58c8, 1).fillRoundedRect(cx - rw / 2, y0 - rh * 0.35, rw, rh, rh * 0.4);
+    g.fillStyle(0xffffff, 0.18).fillRoundedRect(cx - rw / 2 + 10 * D, y0 - rh * 0.35 + 5 * D, rw - 20 * D, rh * 0.25, rh * 0.12);
+    const title = this.add.text(cx, y0 + rh * 0.15, `Level ${n + 1}`, { fontFamily: FONT, fontSize: Math.round(rh * 0.55) + 'px', fontStyle: '700', color: '#ffffff', stroke: '#2a1d47', strokeThickness: 5 * D }).setOrigin(0.5);
+    // kapat
+    const xb = this.add.container(x0 + cw - 10 * D, y0 - 4 * D).setSize(40 * D, 40 * D).setInteractive();
+    const xg = this.add.graphics();
+    xg.fillStyle(0x8a2a22, 1).fillCircle(0, 2 * D, 16 * D); xg.fillStyle(0xe0564a, 1).fillCircle(0, 0, 16 * D);
+    xg.lineStyle(2.5 * D, 0xffffff, 1).strokeCircle(0, 0, 16 * D);
+    xg.lineStyle(4 * D, 0xffffff, 1).lineBetween(-6 * D, -6 * D, 6 * D, 6 * D).lineBetween(6 * D, -6 * D, -6 * D, 6 * D);
+    xb.add(xg); xb.on('pointerup', () => { sfx.tap(); k.destroy(); this.popup = null; this.scene.restart({ tab: this.tab }); });
+    k.add([dim, g, title, xb]);
+    let y = y0 + rh * 0.9;
+    const fs = Math.round(Math.min(cw * 0.05, 17 * D)), fsS = Math.round(fs * 0.84);
+    k.add(this.add.text(cx, y, A.name, { fontFamily: FONT, fontSize: fs + 'px', fontStyle: '700', color: '#ffe3a8' }).setOrigin(0.5, 0));
+    y += fs * 1.7;
+    // bilgi kutusu: süre, hedef, patron ya da sıradaki ödül
+    const ih = ch * 0.27, iw = cw - 40 * D;
+    g.fillStyle(0x1a1030, 1).fillRoundedRect(cx - iw / 2, y, iw, ih, 18 * D);
+    k.add(this.add.text(cx, y + ih * 0.24, `⏱ ${L.time} sn     ✦ ${L.goal}`, { fontFamily: FONT, fontSize: Math.round(fs * 1.15) + 'px', fontStyle: '700', color: '#ffffff' }).setOrigin(0.5));
+    let line;
+    if (boss) line = `☠ ${boss.name}\n${boss.desc}`;
+    else { const m = Math.ceil((n + 1) / 5) * 5; line = `🔩 +5 hurda ödülü\n🔒 Level ${m}'de açılır`; }
+    k.add(this.add.text(cx, y + ih * 0.66, line, { fontFamily: FONT, fontSize: fsS + 'px', fontStyle: '700', color: boss ? '#ff8a7c' : '#c9bde8', align: 'center', lineSpacing: 3 * D, wordWrap: { width: iw - 20 * D } }).setOrigin(0.5));
+    y += ih + 16 * D;
+    // güçlendiriciler
+    k.add(this.add.text(cx, y, 'Güçlendirici seç', { fontFamily: FONT, fontSize: fs + 'px', fontStyle: '700', color: '#ffffff' }).setOrigin(0.5, 0));
+    y += fs * 1.6;
+    const keys = Object.keys(BOOST), tw = Math.min((cw - 60 * D) / 3, 84 * D), gap = 10 * D;
+    const tx0 = cx - (tw * 3 + gap * 2) / 2;
+    keys.forEach((key, i) => {
+      const b = BOOST[key], x = tx0 + i * (tw + gap), on = !!this.pick[key], cnt = META.boost[key] || 0;
+      const tg = this.add.graphics();
+      tg.fillStyle(0x9a7424, 1).fillRoundedRect(x, y + 4 * D, tw, tw, 16 * D);
+      tg.fillStyle(on ? 0x5fd38a : 0xe0b450, 1).fillRoundedRect(x, y, tw, tw, 16 * D);
+      tg.fillStyle(0xffffff, 0.25).fillRoundedRect(x + 6 * D, y + 5 * D, tw - 12 * D, tw * 0.16, 6 * D);
+      if (on) tg.lineStyle(4 * D, 0xffffff, 1).strokeRoundedRect(x, y, tw, tw, 16 * D);
+      const ic = this.add.text(x + tw / 2, y + tw * 0.42, b.icon, { fontFamily: FONT, fontSize: Math.round(tw * 0.42) + 'px' }).setOrigin(0.5);
+      const nm = this.add.text(x + tw / 2, y + tw * 0.82, b.name, { fontFamily: FONT, fontSize: Math.round(tw * 0.15) + 'px', fontStyle: '700', color: '#2a1a05' }).setOrigin(0.5);
+      // sayı rozeti ya da satın alma artısı
+      const bx = x + tw - 6 * D, by = y + tw - 6 * D;
+      if (on) { tg.fillStyle(0xffffff, 1).fillCircle(bx, by, 12 * D); k.add([tg, ic, nm, this.add.text(bx, by, '✓', { fontFamily: FONT, fontSize: Math.round(14 * D) + 'px', fontStyle: '700', color: '#2e8a52' }).setOrigin(0.5)]); }
+      else if (cnt > 0) { tg.fillStyle(0xe0564a, 1).fillCircle(bx, by, 12 * D); tg.lineStyle(2 * D, 0xffffff, 1).strokeCircle(bx, by, 12 * D); k.add([tg, ic, nm, this.add.text(bx, by, String(cnt), { fontFamily: FONT, fontSize: Math.round(13 * D) + 'px', fontStyle: '700', color: '#ffffff' }).setOrigin(0.5)]); }
+      else { tg.fillStyle(0x5fd38a, 1).fillCircle(bx, by, 12 * D); tg.lineStyle(2 * D, 0xffffff, 1).strokeCircle(bx, by, 12 * D); k.add([tg, ic, nm, this.add.text(bx, by, '+', { fontFamily: FONT, fontSize: Math.round(18 * D) + 'px', fontStyle: '700', color: '#ffffff' }).setOrigin(0.5)]); }
+      const hit = this.add.rectangle(x + tw / 2, y + tw / 2, tw, tw, 0, 0).setInteractive();
+      hit.on('pointerup', () => this.toggleBoost(key));
+      k.add(hit);
+    });
+    y += tw + 14 * D;
+    const sel = keys.filter(kk => this.pick[kk]);
+    const hint = sel.length === 1 ? BOOST[sel[0]].desc : sel.length ? `${sel.length} güçlendirici seçildi.` : `Bitince ${BOOST.time.cost} 🔩 ile alabilirsin.`;
+    k.add(this.add.text(cx, y, hint, { fontFamily: FONT, fontSize: Math.round(fsS * 0.92) + 'px', fontStyle: '500', color: '#c9bde8', align: 'center', wordWrap: { width: cw - 40 * D } }).setOrigin(0.5, 0));
+    const pb = makeButton(this, cx, y0 + ch - Math.min(48 * D, ch * 0.1) - 10 * D, cw * 0.62, Math.min(58 * D, ch * 0.12), 'Oyna', BTN_GO, () => this.startLevel());
+    pb.label.setStroke('#1e5c37', 5 * D);
+    k.add(pb);
+    k.setScale(0.85).setAlpha(0);
+    k.x = W * 0.075; k.y = H * 0.075;
+    this.tweens.add({ targets: k, scale: 1, x: 0, y: 0, alpha: 1, duration: 220, ease: 'Back.out' });
+    this.popup = k;
+  }
+
+  toggleBoost(key) {
+    const b = BOOST[key];
+    if (this.pick[key]) { delete this.pick[key]; sfx.tap(); }
+    else if ((META.boost[key] || 0) > 0) { this.pick[key] = true; sfx.pick(); }
+    else if (META.scrap >= b.cost) { META.scrap -= b.cost; META.boost[key] = 1; saveMeta(); this.pick[key] = true; [523, 784].forEach((f, i) => setTimeout(() => beep(f, 0.1, 'triangle', 0.15), i * 80)); }
+    else { this.cameras.main.shake(80, 0.004); sfx.bad(); return; }
+    const p = this.popup; this.openLevel(); if (p && p.scene) p.destroy();
+    this.tweens.killTweensOf(this.popup); this.popup.setScale(1).setAlpha(1).setPosition(0, 0);
+  }
+
+  // Oyna: seçilen güçlendiriciler harcanır, daire kapanır, logo görünür, oyun açılır
+  startLevel() {
+    const pick = this.pick || {};
+    Object.keys(pick).forEach(kk => { META.boost[kk] = Math.max(0, (META.boost[kk] || 0) - 1); });
+    saveMeta();
+    state.boostPick = Object.assign({}, pick); this.pick = {};
+    state.enterFx = true; state.menuTab = 'home';
     sfx.pick(); buzz(20);
-    state.menuTab = 'home';
-    this.scene.start('build');
+    const W = this.W, H = this.H, A = AREAS[LEVELS[this.curLevel()].area];
+    const cx = W / 2, cy = H / 2, Rmax = Math.hypot(W, H) / 2 + 20 * D;
+    // dışarıdan içe kapanan daire: kalın çember çizgisiyle
+    const iris = this.add.graphics().setDepth(400);
+    const o = { r: Rmax };
+    const draw = () => { iris.clear(); const th = Rmax * 2; iris.lineStyle(th, 0x5b2a9a, 1).strokeCircle(cx, cy, o.r + th / 2); };
+    draw();
+    this.tweens.add({ targets: o, r: Math.min(W, H) * 0.22, duration: 380, ease: 'Cubic.in', onUpdate: draw, onComplete: () => {
+      // logo: çark ve yıldız
+      const logo = this.add.graphics().setDepth(401).setPosition(cx, cy);
+      const r = Math.min(W, H) * 0.14;
+      logo.fillStyle(0x9a4a22, 1);
+      for (let i = 0; i < 10; i++) { const a = i * Math.PI / 5; logo.fillCircle(Math.cos(a) * r * 1.1, Math.sin(a) * r * 1.1 + 4 * D, r * 0.3); }
+      logo.fillCircle(0, 4 * D, r);
+      logo.fillStyle(0xe0a26a, 1);
+      for (let i = 0; i < 10; i++) { const a = i * Math.PI / 5; logo.fillCircle(Math.cos(a) * r * 1.1, Math.sin(a) * r * 1.1, r * 0.3); }
+      logo.fillCircle(0, 0, r);
+      logo.fillStyle(0x1b2238, 1).fillCircle(0, 0, r * 0.62);
+      const star = this.add.star(cx, cy, 5, r * 0.22, r * 0.5, A.glow).setDepth(402);
+      logo.setScale(0); star.setScale(0);
+      this.tweens.add({ targets: [logo, star], scale: 1, duration: 260, ease: 'Back.out' });
+      this.tweens.add({ targets: o, r: 0, duration: 300, delay: 260, ease: 'Cubic.in', onUpdate: draw });
+      this.tweens.add({ targets: [logo, star], angle: 90, duration: 520, delay: 100 });
+      this.time.delayedCall(620, () => { const bg = this.add.rectangle(0, 0, W, H, 0x5b2a9a, 1).setOrigin(0).setDepth(399); this.scene.start('build'); });
+    } });
   }
 
   // ===================== ATÖLYE (ana sayfa) =====================

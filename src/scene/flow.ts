@@ -246,7 +246,7 @@ export class FlowPart {
       return;
     }
     if (R.last) { clearRun(); newRun(); this.scene.start('menu', { tab: 'home' }); return; }
-    state.round++;
+    state.round++; state.timeBonus = 0;
     const newArea_ = state.round % RULES.roundsPer === 0;
     if (newArea_) newArea(state.round / RULES.roundsPer);   // yeni bölge: boş fabrika
     else state.places += RULES.placesPerRound;

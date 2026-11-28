@@ -21,6 +21,15 @@ export class Build extends Phaser.Scene {
   create() {
     const W = this.scale.width, H = this.scale.height;
     this.W = W; this.H = H;
+    // level penceresinde seçilen güçlendiriciler
+    const bp = state.boostPick;
+    if (bp && state.phase === 'build') {
+      if (bp.cool) state.heat = state.heat.map(() => 0);
+      if (bp.cash) state.res.money += 5;
+      if (bp.time) state.timeBonus = 15;
+      state.boostPick = null;
+      saveRun();
+    }
     this.dialog = null; this.mg = null; this.shop = null; this.meta = null; this.resultBox = null; this.boomed = false; this.pickMod = null; this.lastP = undefined; // sahne yeniden başlarken eski durum kalmasın
 
     const pad = 16 * D;
@@ -125,7 +134,8 @@ export class Build extends Phaser.Scene {
 
     this.refreshPhase();
     if (state.phase === 'build') state.time = levelTime();
-    this.enterLevel();
+    if (state.enterFx) { state.enterFx = false; this.playEnterFx(() => this.enterLevel()); }
+    else this.enterLevel();
     (window as any).__scene = this; // test ve hata ayıklama için
   }
 
@@ -142,6 +152,41 @@ export class Build extends Phaser.Scene {
     if (state.retry) this.flashTip(`Level ${n} tekrar`, `Fabrika bu levele girerkenki haline döndü. Hedef: ✦ ${RULES.goals[state.round]}`, 0x5fd38a, 3000);
     else if (state.round > 0) this.flashTip(`Level ${n}`, `Hedef: ✦ ${RULES.goals[state.round]}. Hazırsan ▶ Başlat.`, 0x5fd38a, 2500);
     state.retry = false;
+  }
+
+  // menüden gelişte: mor perde ve logo, sonra daire açılır; patron levelinde ZOR LEVEL rozeti
+  playEnterFx(done) {
+    const W = this.W, H = this.H, cx = W / 2, cy = H / 2, Rmax = Math.hypot(W, H) / 2 + 20 * D;
+    const iris = this.add.graphics().setDepth(400), o = { r: 0 };
+    const draw = () => { iris.clear(); const th = Rmax * 2; iris.lineStyle(th, 0x5b2a9a, 1).strokeCircle(cx, cy, o.r + th / 2); };
+    draw();
+    const r = Math.min(W, H) * 0.14;
+    const logo = this.add.graphics().setDepth(401).setPosition(cx, cy);
+    logo.fillStyle(0xe0a26a, 1);
+    for (let i = 0; i < 10; i++) { const a = i * Math.PI / 5; logo.fillCircle(Math.cos(a) * r * 1.1, Math.sin(a) * r * 1.1, r * 0.3); }
+    logo.fillCircle(0, 0, r); logo.fillStyle(0x1b2238, 1).fillCircle(0, 0, r * 0.62);
+    const star = this.add.star(cx, cy, 5, r * 0.22, r * 0.5, 0xffd84a).setDepth(402);
+    logo.setAngle(90);
+    this.tweens.add({ targets: [logo, star], scale: 0, duration: 260, delay: 120, ease: 'Back.in' });
+    this.tweens.add({ targets: o, r: Rmax, duration: 480, delay: 280, ease: 'Cubic.out', onUpdate: draw, onComplete: () => {
+      iris.destroy(); logo.destroy(); star.destroy();
+      if (!BOSS[state.round]) { done(); return; }
+      // patron leveli uyarısı
+      const k = this.add.container(cx, this.gy + this.cell * ROWS / 2).setDepth(390);
+      const g = this.add.graphics();
+      const s = Math.min(W * 0.26, 110 * D);
+      g.fillStyle(0x9a7424, 1).fillCircle(0, 4 * D, s * 0.55); g.fillStyle(0xffd84a, 1).fillCircle(0, 0, s * 0.55);
+      const st = this.add.star(0, -s * 0.05, 8, s * 0.42, s * 0.62, 0xffb020);
+      const sk = this.add.text(0, -s * 0.05, '☠', { fontFamily: FONT, fontSize: Math.round(s * 0.55) + 'px', color: '#2a1a05' }).setOrigin(0.5);
+      const t1 = this.add.text(0, s * 0.65, 'ZOR LEVEL', { fontFamily: FONT, fontSize: Math.round(s * 0.36) + 'px', fontStyle: '700', color: '#ffffff', stroke: '#8a1a14', strokeThickness: 8 * D }).setOrigin(0.5);
+      k.add([st, g, sk, t1]);
+      const dim = this.add.rectangle(0, 0, W, H, 0x5a0a10, 0.45).setOrigin(0).setDepth(389);
+      k.setScale(0);
+      beep(180, 0.25, 'sawtooth', 0.15); buzz([60, 40, 60]);
+      this.tweens.add({ targets: k, scale: 1, duration: 300, ease: 'Back.out' });
+      this.tweens.add({ targets: st, angle: 45, duration: 1200 });
+      this.tweens.add({ targets: [k, dim], alpha: 0, delay: 1300, duration: 300, onComplete: () => { k.destroy(); dim.destroy(); done(); } });
+    } });
   }
 
   toggleTheme() {
