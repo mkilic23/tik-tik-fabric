@@ -87,7 +87,7 @@ LEVELS.forEach((L, i) => {
   L.order = [{ res: 'spark', n: s }, { res: 'money', n: m }, { res: 'spark', n: s }];
 });
 // 🏁 Paslı Rıza yarışı: Rıza'nın çubuğu, sürenin 'pace' kadarında hedefe ulaşır; ondan önce bitirmelisin
-const RACE = { 16: 0.85, 29: 0.92 };
+const RACE = { 16: 0.81, 29: 0.85 };   // her Mükemmel tamir Rıza'yı hedefin %2'si kadar geri iter
 LEVELS.forEach((L, i) => { L.race = RACE[i] || 0; });
 export const RES_SYM = { spark: '✦', money: '💎' };
 // hedefin kısa yazısı: "✦ 40" ya da "✦6 → 💎3 → ✦6"

@@ -4,7 +4,7 @@ import { AREAS, LEVELS, PER_AREA, goalText, levelTags, taskText } from '../data/
 import { BOOST, ENG, UPG } from '../data/progress';
 import { BOSS, RULES } from '../data/rules';
 import { BTN_BRASS, BTN_GO, drawMachine, makeButton } from '../draw';
-import { META, bitCount, clearRun, endReplay, newArea, saveMeta, saveRun, starBits, startReplay, state } from '../state';
+import { META, TEST, bitCount, clearRun, endReplay, newArea, saveMeta, saveRun, setTestMode, starBits, startReplay, state } from '../state';
 import { C, D, FONT, THEMES, T } from '../theme';
 import { DialogPart } from './dialog';
 
@@ -36,6 +36,7 @@ export class Menu extends Phaser.Scene {
     if (state.replay != null) endReplay();   // tekrar oynamadan dönüldü: ana fabrika
     this.drawPage();
     this.drawBar();
+    if (TEST) this.add.text(W / 2, 4 * D, 'TEST MODU · kayıt tutulmaz', { fontFamily: FONT, fontSize: Math.round(11 * D) + 'px', fontStyle: '700', color: '#ffffff', backgroundColor: '#c0392b', padding: { x: 6 * D, y: 2 * D } }).setOrigin(0.5, 0).setDepth(260);
     this.scale.once('resize', () => this.scene.restart({ tab: this.tab }));
     this.input.on('pointerdown', p => { this.drag = { y0: p.y, s0: this.scrollY || 0, moved: false }; });
     this.input.on('pointermove', p => {
@@ -184,7 +185,7 @@ export class Menu extends Phaser.Scene {
     k.add([t1, idea, tg]);
     y += ih + 10 * D;
     // yıldızlar: ★1 hedef, ★2 süre, ★3 görev
-    const bits = starBits(n), again = n !== this.curLevel();
+    const bits = starBits(n), again = TEST || n !== this.curLevel();
     const rows = ['Hedefi tuttur', `Sürenin %${Math.round(RULES.timeStar * 100)}'si kala bitir`, taskText(L.task)];
     rows.forEach((r, i) => {
       const st = this.add.text(ix + 10 * D, y, '★', { fontFamily: FONT, fontSize: Math.round(fs * 1.05) + 'px', fontStyle: '700', color: bits & (1 << i) ? '#ffd84a' : '#6a5a90' });
@@ -218,9 +219,9 @@ export class Menu extends Phaser.Scene {
     });
     y += tw + 14 * D;
     const sel = keys.filter(kk => this.pick[kk]);
-    const hint = again && !sel.length ? (bitCount(bits) === 3 ? 'Bu leveli 3 yıldızla geçtin. İstersen yine oyna.' : 'Eksik yıldızları al: aldıkların saklı kalır, ana fabrikan değişmez.') : sel.length === 1 ? BOOST[sel[0]].desc : sel.length ? `${sel.length} güçlendirici seçildi.` : `Bitince ${BOOST.time.cost} 🔩 ile alabilirsin.`;
+    const hint = TEST && !sel.length ? 'Test modu: boş fabrika ve bu levelin yerleştirme hakları. Gerçek kayıt değişmez.' : again && !sel.length ? (bitCount(bits) === 3 ? 'Bu leveli 3 yıldızla geçtin. İstersen yine oyna.' : 'Eksik yıldızları al: aldıkların saklı kalır, ana fabrikan değişmez.') : sel.length === 1 ? BOOST[sel[0]].desc : sel.length ? `${sel.length} güçlendirici seçildi.` : `Bitince ${BOOST.time.cost} 🔩 ile alabilirsin.`;
     k.add(this.add.text(cx, y, hint, { fontFamily: FONT, fontSize: Math.round(fsS * 0.92) + 'px', fontStyle: '500', color: '#c9bde8', align: 'center', wordWrap: { width: cw - 40 * D } }).setOrigin(0.5, 0));
-    const pb = makeButton(this, cx, y0 + ch - Math.min(48 * D, ch * 0.1) - 10 * D, cw * 0.62, Math.min(58 * D, ch * 0.12), again ? 'Tekrar oyna' : 'Oyna', BTN_GO, () => this.startLevel());
+    const pb = makeButton(this, cx, y0 + ch - Math.min(48 * D, ch * 0.1) - 10 * D, cw * 0.62, Math.min(58 * D, ch * 0.12), TEST ? 'Test et' : again ? 'Tekrar oyna' : 'Oyna', BTN_GO, () => this.startLevel());
     pb.label.setStroke('#1e5c37', 5 * D);
     k.add(pb);
     k.setScale(0.85).setAlpha(0);
@@ -246,7 +247,7 @@ export class Menu extends Phaser.Scene {
     saveMeta();
     state.boostPick = Object.assign({}, pick); this.pick = {};
     const n = this.sel != null ? this.sel : this.curLevel(); this.sel = null;
-    if (n !== this.curLevel()) startReplay(n);
+    if (TEST || n !== this.curLevel()) startReplay(n);
     state.enterFx = true; state.menuTab = 'home';
     sfx.pick(); buzz(20);
     const W = this.W, H = this.H, A = AREAS[LEVELS[n].area];
@@ -414,27 +415,31 @@ export class Menu extends Phaser.Scene {
     const W = this.W, H = this.H;
     const k = this.add.container(0, 0).setDepth(300);
     const dim = this.add.rectangle(0, 0, W, H, 0x05070d, 0.7).setOrigin(0).setInteractive();
-    const cw = Math.min(W - this.pad * 2, 340 * D), ch = cw * 0.85, cx = W / 2, cy = H * 0.45;
+    const cw = Math.min(W - this.pad * 2, 340 * D), ch = cw * 1.2, cx = W / 2, cy = H * 0.45;
     const g = this.add.graphics();
     g.fillStyle(0x1a1030, 1).fillRoundedRect(cx - cw / 2, cy - ch / 2 + 6 * D, cw, ch, 22 * D);
     g.fillStyle(0x3a2760, 1).fillRoundedRect(cx - cw / 2, cy - ch / 2, cw, ch, 22 * D);
     g.lineStyle(3 * D, 0xb9a8e0, 1).strokeRoundedRect(cx - cw / 2, cy - ch / 2, cw, ch, 22 * D);
-    const t = this.add.text(cx, cy - ch * 0.38, 'Ayarlar', { fontFamily: FONT, fontSize: Math.round(cw * 0.09) + 'px', fontStyle: '700', color: '#ffffff' }).setOrigin(0.5);
+    const t = this.add.text(cx, cy - ch * 0.4, 'Ayarlar', { fontFamily: FONT, fontSize: Math.round(cw * 0.09) + 'px', fontStyle: '700', color: '#ffffff' }).setOrigin(0.5);
     const bw = cw * 0.8, bh = Math.min(50 * D, ch * 0.16);
-    const theme = makeButton(this, cx, cy - ch * 0.15, bw, bh, state.theme === 'dark' ? 'Oyun teması: Koyu' : 'Oyun teması: Açık', BTN_BRASS, () => {
+    const theme = makeButton(this, cx, cy - ch * 0.24, bw, bh, state.theme === 'dark' ? 'Oyun teması: Koyu' : 'Oyun teması: Açık', BTN_BRASS, () => {
       const nt = state.theme === 'dark' ? 'light' : 'dark';
       state.theme = nt; Object.assign(T, THEMES[nt]);
       try { localStorage.setItem('tiktik-theme', nt); } catch (e) {}
       this.openSettings();
     });
-    const reset = makeButton(this, cx, cy + ch * 0.05, bw, bh, this.resetAsk ? 'Emin misin? Tekrar bas' : '↺ Yeni fabrika (1. bölge)', this.resetAsk ? BTN_RED : BTN_OFF, () => {
+    const reset = makeButton(this, cx, cy - ch * 0.08, bw, bh, this.resetAsk ? 'Emin misin? Tekrar bas' : '↺ Yeni fabrika (1. bölge)', this.resetAsk ? BTN_RED : BTN_OFF, () => {
       if (!this.resetAsk) { this.resetAsk = true; this.openSettings(); return; }
       this.resetAsk = false; clearRun(); newArea(0); saveRun(); sfx.pick();
       this.scene.restart({ tab: 'home' });
     });
-    const note = this.add.text(cx, cy + ch * 0.16, 'Yeni fabrika: makineler sıfırlanır, 1. levelden başlarsın. Yıldız ve hurda kalır.', { fontFamily: FONT, fontSize: Math.round(cw * 0.038) + 'px', fontStyle: '500', color: '#c9bde8', align: 'center', wordWrap: { width: cw * 0.85 } }).setOrigin(0.5, 0);
-    const close = makeButton(this, cx, cy + ch * 0.38, bw * 0.6, bh, 'Kapat', BTN_GO, () => { this.resetAsk = false; k.destroy(); this.popup = null; });
-    k.add([dim, g, t, theme, reset, note, close]);
+    const note = this.add.text(cx, cy + ch * 0.0, 'Yeni fabrika: makineler sıfırlanır, 1. levelden başlarsın. Yıldız ve hurda kalır.', { fontFamily: FONT, fontSize: Math.round(cw * 0.038) + 'px', fontStyle: '500', color: '#c9bde8', align: 'center', wordWrap: { width: cw * 0.85 } }).setOrigin(0.5, 0);
+    const test = makeButton(this, cx, cy + ch * 0.17, bw, bh, TEST ? 'Test modu: Açık' : 'Test modu: Kapalı', TEST ? BTN_RED : BTN_OFF, () => {
+      setTestMode(!TEST); location.reload();
+    });
+    const tnote = this.add.text(cx, cy + ch * 0.17 + bh * 0.6, 'Bütün leveller açılır, her biri boş fabrikayla başlar. Gerçek kayıt değişmez.', { fontFamily: FONT, fontSize: Math.round(cw * 0.034) + 'px', fontStyle: '500', color: '#c9bde8', align: 'center', wordWrap: { width: cw * 0.85 } }).setOrigin(0.5, 0);
+    const close = makeButton(this, cx, cy + ch * 0.42, bw * 0.6, bh, 'Kapat', BTN_GO, () => { this.resetAsk = false; k.destroy(); this.popup = null; });
+    k.add([dim, g, t, theme, reset, note, test, tnote, close]);
     this.popup = k;
   }
 
@@ -519,7 +524,7 @@ export class Menu extends Phaser.Scene {
           k.add(this.add.text(rx, it.y - 3 * D, '🔩', { fontFamily: FONT, fontSize: Math.round(16 * D) + 'px' }).setOrigin(0.5));
           k.add(this.add.text(rx, it.y + 26 * D, got ? 'alındı' : '+5', { fontFamily: FONT, fontSize: Math.round(11 * D) + 'px', fontStyle: '700', color: '#ffe3a8' }).setOrigin(0.5));
         }
-        if (isCur || done) {
+        if (isCur || done || TEST) {
           const hit = this.add.rectangle(px + pw / 2, it.y, pw + 30 * D, ph + 20 * D, 0, 0).setInteractive();
           hit.on('pointerup', () => { if (!this.drag || !this.drag.moved) this.play(n); });
           k.add(hit);

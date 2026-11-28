@@ -86,14 +86,29 @@ export class FlowPart {
   tickOrder() {
     const L = LEVELS[state.round], o = state.ord;
     if (!L.order || !o || o.step >= L.order.length) return;
-    if (this.orderGot() < L.order[o.step].n) return;
+    const cur = L.order[o.step], got = this.orderGot();
+    if (got < cur.n) return;
     o.step++;
     if (o.step < L.order.length) {
-      o.base = this.prodOf(L.order[o.step].res);
+      // bu adımda üretilen fazlalık sadece bir sonraki adıma taşınır, en fazla o adımın yarısı
+      const nx0 = L.order[o.step], now = this.prodOf(nx0.res);
+      const extra = nx0.res === cur.res ? got - cur.n : now - (o.nextBase ?? now);
+      o.base = now - Math.min(Math.max(0, extra), Math.floor(nx0.n / 2));
+      o.nextBase = o.step + 1 < L.order.length ? this.prodOf(L.order[o.step + 1].res) : null;
       const nx = L.order[o.step];
       this.flashTip(`📋 Sipariş ${o.step}/${L.order.length} tamam!`, `Sıradaki: ${RES_SYM[nx.res]} ${nx.n} ${nx.res === 'money' ? 'üret (Basıcı)' : 'üret (Pres)'}.`, 0x7fd4e0, 2600);
       [659, 880, 1175].forEach((f, k) => setTimeout(() => beep(f, 0.09, 'triangle', 0.14), k * 80)); buzz([15, 20, 15]);
     }
+  }
+  // 🏁 Mükemmel tamir Rıza'yı geri iter (çubuğunda kısa bir "−" görünür)
+  pushRival() {
+    if (state.rival == null || state.goalHitT != null || state.phase !== 'run') return;
+    const goal = RULES.goals[state.round];
+    state.rival = Math.max(0, state.rival - goal * RULES.rivalPush);
+    const b = this.bar, x = b.x + b.w * state.rival / goal, y = b.y + b.h + 7 * D;
+    const t = this.add.text(x, y, '−', { fontFamily: FONT, fontSize: Math.round(22 * D) + 'px', fontStyle: '700', color: '#ff8a7c', stroke: '#0b0f1c', strokeThickness: 4 * D }).setOrigin(0.5).setDepth(60);
+    this.tweens.add({ targets: t, x: x - 18 * D, alpha: 0, duration: 700, onComplete: () => t.destroy() });
+    if (!state.pushTaught) { state.pushTaught = true; this.flashTip('Rıza geri düştü!', 'Her Mükemmel tamir Rıza\'nın çubuğunu biraz geri iter.', 0xe0564a, 2500); }
   }
   // 🏁 Paslı Rıza yarışı: onun çubuğu ilerler; hedefe senden önce ulaşırsa level kaybedilir
   tickRace(dt) {
@@ -138,7 +153,7 @@ export class FlowPart {
     state.joltT = BOSS[state.round] && BOSS[state.round].jolt;
     // 3. yıldız görevi: başta gösterilir, tur boyunca alttaki yazıda ilerler
     const L = LEVELS[state.round];
-    state.ord = L.order ? { step: 0, base: 0 } : null;          // 📋 sıralı sipariş
+    state.ord = L.order ? { step: 0, base: 0, nextBase: 0 } : null;          // 📋 sıralı sipariş
     state.rival = L.race ? 0 : null; state.rivalWon = false;     // 🏁 Rıza yarışı
     // başta sırayla ipuçları: patron, levelin özel kuralı, yıldız görevi
     const tips = [];

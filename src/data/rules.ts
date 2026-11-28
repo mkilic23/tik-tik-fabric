@@ -12,6 +12,7 @@ export const RULES = {
   startMoney: 10,
   heatRate: { crank: 0.045, press: 0.04, mint: 0.035, fan: 0.03 }, // saniyede ısınma (0-1)
   idleHeat: 0.4,                       // çalışamayan makine bu oranda ısınır
+  rivalPush: 0.02,                     // Mükemmel tamir Rıza'yı hedefin bu kadarı geri iter
   steamHeat: 1.8,                      // buhar sızıntısının yanındaki makineler bu kat hızlı ısınır
   fanCool: 0.5,                        // Fan'ın 2x2 alanındaki makineler yarı hızda ısınır
   needAt: 0.7,                         // bu ısıda ! çıkar

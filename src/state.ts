@@ -5,12 +5,29 @@ import { COLS, ROWS, savedTheme } from './theme';
 // Oyun durumu (ekran döndürülünce korunur)
 export const state: any = { theme: savedTheme };
 
+// ---------- test modu ----------
+// ?test=1 adresle ya da Ayarlar'daki düğmeyle açılır. Bütün leveller açık, her level boş fabrikayla
+// başlar; kayıtlar sadece bellekte tutulur, gerçek kayda hiç yazılmaz.
+export const TEST = (() => {
+  try {
+    const q = new URLSearchParams(location.search).get('test');
+    if (q === '1') localStorage.setItem('tiktik-test', '1');
+    if (q === '0') localStorage.removeItem('tiktik-test');
+    return localStorage.getItem('tiktik-test') === '1';
+  } catch (e) { return false; }
+})();
+export function setTestMode(on) { try { if (on) localStorage.setItem('tiktik-test', '1'); else localStorage.removeItem('tiktik-test'); } catch (e) {} }
+const mem = {};
+function lsGet(k) { if (TEST && k in mem) return mem[k]; try { return localStorage.getItem(k); } catch (e) { return null; } }
+function lsSet(k, v) { if (TEST) { mem[k] = v; return; } try { localStorage.setItem(k, v); } catch (e) {} }
+function lsDel(k) { if (TEST) { mem[k] = null; return; } try { localStorage.removeItem(k); } catch (e) {} }
+
 // ---------- kalıcı ilerleme (hurda, yıldızlar, açılımlar, mühendisler) ve kayıt ----------
 // stars[n]: n. levelde alınan en iyi yıldız (0 = geçilmedi). Fabrika levelden levele taşınır;
 // kaydedilen 'run' o levelin başındaki fabrikadır, kaybedince oradan tekrar oynanır.
 export const META: any = { scrap: 0, lv: { money: 0, place: 0, shield: 0, offer: 0 }, eng: { cirak: true }, pick: 'cirak', runs: 0, stars: [], bits: [], boost: { time: 2, cool: 2, cash: 2 }, tutorialDone: false, seenIntro: false };
 try {
-  const m = JSON.parse(localStorage.getItem('tiktik-meta') || 'null');
+  const m = JSON.parse(lsGet('tiktik-meta') || 'null');
   if (m) {
     Object.assign(META, m);
     META.lv = Object.assign({ money: 0, place: 0, shield: 0, offer: 0 }, m.lv);
@@ -20,7 +37,7 @@ try {
     META.boost = Object.assign({ time: 2, cool: 2, cash: 2 }, m.boost);
   }
 } catch (e) {}
-export function saveMeta() { try { localStorage.setItem('tiktik-meta', JSON.stringify(META)); } catch (e) {} }
+export function saveMeta() { lsSet('tiktik-meta', JSON.stringify(META)); }
 
 // fabrika kaydı: sadece kurulum aşamasında (level başında) yazılır
 export const RUN_KEYS = ['grid', 'rot', 'heat', 'mod', 'round', 'res', 'places', 'offers', 'shopOpen', 'rerolls', 'serviceTaught', 'ventTaught', 'timeBonus', 'steam', 'steamR'];
@@ -31,15 +48,15 @@ export function saveRun() {
   try {
     const o = {}; RUN_KEYS.forEach(k => { o[k] = state[k]; });
     const j = JSON.stringify(o);
-    localStorage.setItem('tiktik-run', j);
-    localStorage.setItem('tiktik-snap-' + state.round, j);   // her levelin başlangıç fabrikası (yıldız için tekrar oynamada)
+    lsSet('tiktik-run', j);
+    lsSet('tiktik-snap-' + state.round, j);   // her levelin başlangıç fabrikası (yıldız için tekrar oynamada)
   } catch (e) {}
 }
-export function clearRun() { try { localStorage.removeItem('tiktik-run'); } catch (e) {} }
+export function clearRun() { lsDel('tiktik-run'); }
 // level başındaki fabrikayı geri yükle (açılışta ve kaybedince)
 export function loadRun() {
   try {
-    const o = JSON.parse(localStorage.getItem(runKey()) || 'null');
+    const o = JSON.parse(lsGet(runKey()) || 'null');
     if (!o || !Array.isArray(o.grid) || o.grid.length !== COLS * ROWS || !(o.round < RULES.goals.length)) return false;
     RUN_KEYS.forEach(k => { if (o[k] !== undefined) state[k] = JSON.parse(JSON.stringify(o[k])); });
     state.phase = 'build'; state.needIntro = false; state.res.spark = 0; state.res.energy = 0;
@@ -52,14 +69,14 @@ export function loadRun() {
 // (kayıt yoksa bölge başından o levele göre boş bir fabrika kurulur)
 export function startReplay(n) {
   state.replay = n;
-  if (loadRun()) return;
+  if (!TEST && loadRun()) return;   // test modunda her zaman boş fabrika
   const L = LEVELS[n];
   newArea(L.area);
   state.round = n; state.needIntro = false;
   state.places += RULES.placesPerRound * L.idx;
-  state.res.money += 3 * L.idx;
+  state.res.money += 3 * L.idx + (TEST ? 10 : 0);
   state.time = L.time; state.boomT = L.boom;
-  try { const o = {}; RUN_KEYS.forEach(k => { o[k] = state[k]; }); localStorage.setItem('tiktik-snap-' + n, JSON.stringify(o)); } catch (e) {}
+  try { const o = {}; RUN_KEYS.forEach(k => { o[k] = state[k]; }); lsSet('tiktik-snap-' + n, JSON.stringify(o)); } catch (e) {}
 }
 // tekrar oynama bitti: ana fabrikaya dön
 export function endReplay() {
